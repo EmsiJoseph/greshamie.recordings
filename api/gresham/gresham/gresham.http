@@ -1,0 +1,6 @@
+@gresham_HostAddress = http://localhost:5108
+
+GET {{gresham_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
