@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace gresham.Models
+namespace Api.Models
 {
     public class User
     {
@@ -9,9 +9,7 @@ namespace gresham.Models
         public string Username { get; set; }
         public string PasswordHash { get; set; }
         public string Email { get; set; }
-        public bool SignedInStatus { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
     }
-
 }

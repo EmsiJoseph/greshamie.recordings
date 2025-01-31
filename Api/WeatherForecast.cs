@@ -1,4 +1,4 @@
-namespace gresham
+namespace Api
 {
     public class WeatherForecast
     {

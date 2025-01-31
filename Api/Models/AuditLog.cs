@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace gresham.Models
+namespace Api.Models
 {
     public class AuditLog
     {

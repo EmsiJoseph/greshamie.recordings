@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace gresham.Controllers
+namespace Api.Controllers
 {
     [ApiController]
     [Route("[controller]")]
