@@ -1,4 +1,69 @@
 #ASP.NET default .gitignore file
+# Visual Studio
+.vscode/
+.vs/
+*.csproj.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ASP.NET
+App_Data/
+App_Licenses/
+App_Start/
+bin/
+obj/
+node_modules/
+bower_components/
+packages/
+TestResults/
+project.lock.json
+project.fragment.lock.json
+project.json.lock.tmp
+*.build.csdef
+
+# Logs
+*.log
+*.tlog
+*.log.xml
+*_log.xml
+*.log1
+*.log2
+
+# Azure
+*.publishsettings
+.publish/
+
+# SQL Server files
+*.mdf
+*.ldf
+
+# Resharper
+_ReSharper*/
+*.DotSettings.user
+
+# NPM
+npm-debug.log
+yarn-error.log
+dist/
+
+# Others
+*.vspscc
+*.vssscc
+*.cache
+*.wpi
+!default.nupkg
+.nuget/
+.packages
+svc_pattern.js
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+*.swp
+*.swm
 
 
 
