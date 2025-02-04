@@ -8,6 +8,8 @@
 *.userosscache
 *.sln.docstates
 .idea/
+
+
 # ASP.NET
 App_Data/
 App_Licenses/
