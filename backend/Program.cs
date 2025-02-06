@@ -1,145 +1,277 @@
-using System.Threading.RateLimiting;
+using System.Text;
 using backend.Classes;
 using backend.Constants;
+using backend.Data;
+using backend.DTOs;
+using backend.Extensions;
+using backend.Models;
 using backend.Services.Auth;
-using backend.Services.LiveRecordings;
+using backend.Services.ClarifyGoServices.Comments;
+using backend.Services.ClarifyGoServices.HistoricRecordings;
+using backend.Services.ClarifyGoServices.LiveRecordings;
+using backend.Services.ClarifyGoServices.Tags;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
 
 // 1. Core Services
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOutputCache();
-builder.Services.AddRateLimiter();
-builder.Services.AddCors();
-
-// 2. Application Services
-
-// Register strongly-typed settings from configuration
-builder.Services.Configure<AuthSettings>(configuration.GetSection("AuthSettings"));
-builder.Services.Configure<ApiSettings>(configuration.GetSection("ApiSettings"));
-
-// Register HTTP clients for the services
-
-// IAuthService uses a HttpClient to contact the Identity Server.
-builder.Services.AddHttpClient<IAuthService, AuthService>();
-
-// ILiveRecordingsService uses a separate HttpClient to contact the ClarifyGo API.
-var clarifyGoApiUri = configuration["ApiSettings:ApiBaseUri"] ??
-                      throw new InvalidOperationException("ClarifyGo API URI not configured.");
-builder.Services.AddHttpClient<ILiveRecordingsService, LiveRecordingsService>(client =>
+builder.Services.AddControllers();
+builder.Services.AddRateLimiter(options =>
 {
-    client.BaseAddress = new Uri(clarifyGoApiUri);
+    options.AddSlidingWindowLimiter("PerUserPolicy", opt =>
+    {
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.PermitLimit = 100;
+    });
 });
 
-// Register Authentication & Authorization.
-// NOTE: In production, update the token validation parameters with the proper issuer, audience, and signing key.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = false,       // change to true and set ValidIssuer for production
-            ValidateAudience = false,     // change to true and set ValidAudience for production
-            ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            // IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("Secret-Key"))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
+                builder.Configuration["Jwt:Key"]!)),
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
         };
     });
+
 builder.Services.AddAuthorization();
 
-// 3. Policies
-ConfigurePolicies(builder.Services);
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+        options.JsonSerializerOptions.WriteIndented = true;
+    });
+
+// Add db connection
+var connection = String.Empty;
+
+if (builder.Environment.IsDevelopment())
+
+{
+    connection = builder.Configuration.GetConnectionString("DefaultConnection") ??
+                 throw new InvalidOperationException(
+                     "Connection string 'DefaultConnection' not found.");
+}
+else
+{
+    connection = configuration["ConnectionStrings:DefaultConnection"];
+}
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(connection));
+
+builder.Services.AddIdentity<User, IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+
+
+// 2. Application Services
+// 2.1. Live Recordings Service
+builder.Services.AddScoped<ILiveRecordingsService, LiveRecordingsService>();
+
+// 2.2 Historic Recordings Service
+builder.Services.AddScoped<IHistoricRecordingsService, HistoricRecordingsService>();
+
+// 2.3. Comments Service
+builder.Services.AddScoped<ICommentsService, CommentsService>();
+
+// 2.4 Tags Service
+builder.Services.AddScoped<ITagsService, TagsService>();
+
+// 2.5. Token Service
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITokenService, TokenService>();
+
+
+// 3. HTTP Client Configurations
+var identityServerUri = configuration["ClarifyGoAPI:IdentityServerUri"]
+                        ?? throw new InvalidOperationException("Missing Identity Server URI configuration");
+
+var apiBaseUri = configuration["ClarifyGoAPI:ApiBaseUri"]
+                 ?? throw new InvalidOperationException("Missing API base URI configuration");
+
+builder.Services.AddHttpClient<ITokenService, TokenService>(client =>
+{
+    client.BaseAddress = new Uri(identityServerUri);
+});
+
+
+builder.Services.AddHttpClient<ILiveRecordingsService, LiveRecordingsService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUri);
+});
+
+builder.Services.AddHttpClient<IHistoricRecordingsService, HistoricRecordingsService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUri);
+});
+
+builder.Services.AddHttpClient<ICommentsService, CommentsService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUri);
+});
+
+builder.Services.AddHttpClient<ITagsService, TagsService>(client => { client.BaseAddress = new Uri(apiBaseUri); });
+
+// 4. Security Configuration
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("ReactClient", policy =>
+    {
+        policy.WithOrigins("https://localhost:3000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
 var app = builder.Build();
 
-// 4. Pipeline Configuration
-ConfigurePipeline(app);
+// 5. Middleware Pipeline
+// Add the Https Redirection Middleware in production
+// app.UseHttpsRedirection();
+app.UseCors("ReactClient");
+app.UseOutputCache();
+app.UseRateLimiter();
 
-// 5. Endpoints
-ConfigureEndpoints(app);
 
-app.Run();
+// 6. Endpoints
+app.MapGet("/health", () => Results.Ok());
 
+// 6.1. Live Recordings Endpoints
+// 6.1.1. Get All Live Recordings
+app.MapGet(AppApiEndpoints.Recordings.Live.GetAll,
+        async (ILiveRecordingsService service) => { return await service.GetLiveRecordingsAsync(); })
+    .CacheOutput("RecordingsCache")
+    .RequireAuthorization();
 
-// --- Local Functions ---
-
-void ConfigurePolicies(IServiceCollection services)
-{
-    // Configure a sliding window rate limiter per user or IP address
-    services.Configure<RateLimiterOptions>(options =>
-    {
-        options.AddPolicy<string>("PerUserPolicy", context =>
-            RateLimitPartition.GetSlidingWindowLimiter(
-                context.User.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString(),
-                _ => new SlidingWindowRateLimiterOptions
-                {
-                    Window = TimeSpan.FromMinutes(1),
-                    PermitLimit = 100
-                }));
-    });
-
-    // Configure output caching with a policy for recordings
-    services.Configure<OutputCacheOptions>(options =>
-    {
-        options.AddPolicy("RecordingsCache", builder =>
-            builder.Expire(TimeSpan.FromMinutes(5))
-                   .SetVaryByQuery("*")
-                   .Tag("recordings"));
-    });
-
-    // Configure CORS with allowed origins from configuration
-    services.AddCors(options =>
-    {
-        options.AddPolicy("RestrictedOrigins", policy =>
+// 6.1.2. Resume Recording
+app.MapPut(AppApiEndpoints.Recordings.Live.Resume,
+        async (ILiveRecordingsService service, string recorderId, string recordingId) =>
         {
-            policy.WithOrigins(configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>())
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        });
-    });
-}
+            await service.ResumeRecordingAsync(recorderId, recordingId);
+            return Results.Ok();
+        })
+    .RequireRateLimiting("PerUserPolicy")
+    .RequireAuthorization();
 
-void ConfigurePipeline(WebApplication app)
-{
-    if (app.Environment.IsDevelopment())
-    {
-        app.MapOpenApi();
-    }
+// 6.1.3. Pause Recording
+app.MapPut(AppApiEndpoints.Recordings.Live.Pause,
+        async (ILiveRecordingsService service, string recorderId, string recordingId) =>
+        {
+            await service.PauseRecordingAsync(recorderId, recordingId);
+            return Results.Ok();
+        })
+    .RequireRateLimiting("PerUserPolicy")
+    .RequireAuthorization();
 
-    app.UseHsts();
-    app.UseHttpsRedirection();
-    app.UseCors("RestrictedOrigins");
-    app.UseAuthentication();
-    app.UseAuthorization();
-    app.UseRateLimiter();
-    app.UseOutputCache();
-}
+// 6.1.4. Get Comments
+app.MapGet(AppApiEndpoints.Recordings.Live.Comments,
+        async (ICommentsService service, string recordingId) =>
+        {
+            bool isLiveRecording = true;
+            await service.GetCommentsAsync(recordingId, isLiveRecording);
+        })
+    .CacheOutput("CommentsCache")
+    .RequireAuthorization();
 
-void ConfigureEndpoints(WebApplication app)
-{
-    // Health check endpoint
-    app.MapGet("/health", () => Results.Ok())
-       .AllowAnonymous();
+// 6.1.5. Post Comment
+app.MapPost(AppApiEndpoints.Recordings.Live.Comments,
+        async (ICommentsService service, string recordingId, string comment) =>
+        {
+            bool isLiveRecording = true;
+            await service.PostCommentAsync(recordingId, comment, isLiveRecording);
+        })
+    .RequireRateLimiting("PerUserPolicy")
+    .RequireAuthorization();
 
-    // Live Recordings endpoint (requires valid JWT and uses caching)
-    app.MapGet(ClarifyGoApiEndpoints.LiveRecordings.GetAll,
-        async (ILiveRecordingsService service) =>
-            await service.GetLiveRecordingsAsync())
-       .RequireAuthorization()
-       .CacheOutput("RecordingsCache");
-}
+// 6.1.6. Delete Comment
+app.MapDelete(AppApiEndpoints.Recordings.Live.CommentById,
+        async (ICommentsService service, string recordingId, string commentId) =>
+        {
+            bool isLiveRecording = true;
+            await service.DeleteCommentAsync(recordingId, commentId, isLiveRecording);
+        })
+    .RequireRateLimiting("PerUserPolicy")
+    .RequireAuthorization();
 
-// --- Extension Method for OpenAPI ---
-static class ServiceCollectionExtensions
-{
-    public static IServiceCollection AddOpenApi(this IServiceCollection services)
-    {
-        services.AddEndpointsApiExplorer();
-        return services;
-    }
-}
+// 6.1.7. Get Tags
+app.MapGet(AppApiEndpoints.Recordings.Live.Tags,
+        async (ITagsService service, string recordingId) =>
+        {
+            bool isLiveRecording = true;
+            await service.GetTagsAsync(recordingId, isLiveRecording);
+        })
+    .CacheOutput("TagsCache")
+    .RequireAuthorization();
+
+// 6.1.8. Post Tag
+app.MapPost(AppApiEndpoints.Recordings.Live.TagOperations,
+        async (ITagsService service, string recordingId, string tag) =>
+        {
+            bool isLiveRecording = true;
+            await service.PostTagAsync(recordingId, tag, isLiveRecording);
+        })
+    .RequireRateLimiting("PerUserPolicy")
+    .RequireAuthorization();
+
+// 6.1.9. Delete Tag
+app.MapDelete(AppApiEndpoints.Recordings.Live.TagOperations,
+        async (ITagsService service, string recordingId, string tag) =>
+        {
+            bool isLiveRecording = true;
+            await service.DeleteTagAsync(recordingId, tag, isLiveRecording);
+        })
+    .RequireRateLimiting("PerUserPolicy")
+    .RequireAuthorization();
+
+// 6.2. Historic Recordings Endpoints
+// 6.2.1. Get All Historic Recordings with default start and end dates
+app.MapGet(AppApiEndpoints.Recordings.Historic.GetAll,
+        async (IHistoricRecordingsService service,
+            [AsParameters] RecordingSearchFiltersDto searchFiltersDto) =>
+        {
+            searchFiltersDto.StartDate = DateTime.Now.StartOfWeek(DayOfWeek.Monday);
+            searchFiltersDto.EndDate = DateTime.Now;
+            Console.WriteLine($"Start Date: {searchFiltersDto.StartDate}, End Date: {searchFiltersDto.EndDate}");
+            return await service.SearchRecordingsAsync(searchFiltersDto);
+        }
+    )
+    .CacheOutput("RecordingsCache")
+    .RequireAuthorization();
+
+// 6.2.2. Get All Historic Recordings with custom start and end dates
+app.MapGet(AppApiEndpoints.Recordings.Historic.Search,
+        async (IHistoricRecordingsService service,
+                [AsParameters] RecordingSearchFiltersDto searchFiltersDto) =>
+            await service.SearchRecordingsAsync(searchFiltersDto))
+    .CacheOutput("RecordingsCache")
+    .RequireAuthorization();
+
+// 6.2.3. Delete Historic Recording
+app.MapDelete(AppApiEndpoints.Recordings.Historic.Delete,
+        async (IHistoricRecordingsService service, string recordingId) =>
+        {
+            await service.DeleteRecordingAsync(recordingId);
+        })
+    .RequireRateLimiting("PerUserPolicy")
+    .RequireAuthorization();
+
+
+app.MapControllers();
+app.Run();
