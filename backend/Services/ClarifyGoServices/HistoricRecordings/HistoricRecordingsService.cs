@@ -1,49 +1,22 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Threading.Tasks;
+using System.Net;
+using backend.Classes;
 using backend.Constants;
-using backend.Models;
-using backend.Services.HistoricRecordings;
+using backend.DTOs;
+using backend.Services.Auth;
+using IdentityModel.Client;
+using Microsoft.IdentityModel.Tokens;
 
-namespace backend.Services.HistoricRecordings
+namespace backend.Services.ClarifyGoServices.HistoricRecordings
 {
-    public class HistoricRecordingsService : IHistoricRecordingsService
+    public class HistoricRecordingsService(HttpClient httpClient, ITokenService tokenService)
+        : IHistoricRecordingsService
     {
-        private readonly HttpClient _httpClient;
+        private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 
-        public HistoricRecordingsService(HttpClient httpClient)
-        {
-            _httpClient = httpClient;
-        }
+        private readonly ITokenService _tokenService =
+            tokenService ?? throw new ArgumentNullException(nameof(tokenService));
 
-        public async Task<RecordingSearchResults> SearchRecordingsAsync(
-            DateTime start,
-            DateTime end,
-            RecordingSearchFilters filters = null) // Updated parameter type
-        {
-            var formattedStart = Uri.EscapeDataString(start.ToUniversalTime().ToString("O"));
-            var formattedEnd = Uri.EscapeDataString(end.ToUniversalTime().ToString("O"));
-
-            var baseUrl = ClarifyGoApiEndpoints.HistoricRecordings.Search
-                .Replace("{startDate}", formattedStart)
-                .Replace("{endDate}", formattedEnd);
-
-            var queryParams = BuildQueryParameters(filters);
-            var fullUrl = queryParams.Any()
-                ? $"{baseUrl}?{string.Join("&", queryParams)}"
-                : baseUrl;
-
-            var response = await _httpClient.GetAsync(fullUrl);
-            response.EnsureSuccessStatusCode();
-
-            return await response.Content.ReadFromJsonAsync<RecordingSearchResults>();
-        }
-
-        private List<string> BuildQueryParameters(RecordingSearchFilters filters)
+        private List<string> BuildQueryParameters(RecordingSearchFiltersDto? filters)
         {
             var queryParams = new List<string>();
 
@@ -57,7 +30,7 @@ namespace backend.Services.HistoricRecordings
             {
                 if (!filters.EarliestTimeOfDay.HasValue || !filters.LatestTimeOfDay.HasValue)
                 {
-                    throw new ArgumentException("Both EarliestTimeOfDay and LatestTimeOfDay must be provided together");
+                    queryParams.Add($"ticks=0");
                 }
 
                 queryParams.Add($"minTimeOfDay={FormatTimeSpan(filters.EarliestTimeOfDay.Value)}");
@@ -65,10 +38,11 @@ namespace backend.Services.HistoricRecordings
             }
 
             // Boolean parameters
-            AddQueryParam(queryParams, "filterRecordingByCompletionTime", filters.FilterByRecordingEndTime);
-            AddQueryParam(queryParams, "hasScreenRecording", filters.HasVideoRecording);
+            AddQueryParam(queryParams, "hasScreenRecording", filters.HasScreenRecording);
             AddQueryParam(queryParams, "hasPciEvents", filters.HasPciComplianceEvents);
             AddQueryParam(queryParams, "hasRecordingEvaluation", filters.HasQualityEvaluation);
+            AddQueryParam(queryParams, "filterRecordingByCompletionTime", filters.FilterByRecordingEndTime);
+            AddQueryParam(queryParams, "searchUnallocatedDevices", filters.SearchUnallocatedDevices);
             AddQueryParam(queryParams, "sortDescending", filters.SortDescending);
 
             // Numeric parameters
@@ -83,7 +57,7 @@ namespace backend.Services.HistoricRecordings
             AddQueryParam(queryParams, "phoneNumber", filters.PhoneNumber);
             AddQueryParam(queryParams, "direction", filters.CallDirection);
             AddQueryParam(queryParams, "device", filters.DeviceNumber);
-            AddQueryParam(queryParams, "huntGroupNumber", filters.HuntGroup);
+            AddQueryParam(queryParams, "huntGroupNumber", filters.HuntGroupNumber);
             AddQueryParam(queryParams, "accountCode", filters.AccountCode);
             AddQueryParam(queryParams, "callId", filters.CallId);
 
@@ -105,7 +79,7 @@ namespace backend.Services.HistoricRecordings
             return queryParams;
         }
 
-        private void AddQueryParam<T>(List<string> queryParams, string name, T? value) where T : struct
+        private void AddQueryParam<T>(List<string> queryParams, string name, T? value = null) where T : struct
         {
             if (value.HasValue)
             {
@@ -114,11 +88,14 @@ namespace backend.Services.HistoricRecordings
                     bool b => b.ToString().ToLower(),
                     _ => value.Value.ToString()
                 };
+
+                stringValue ??= string.Empty;
+
                 queryParams.Add($"{name}={Uri.EscapeDataString(stringValue)}");
             }
         }
 
-        private void AddQueryParam(List<string> queryParams, string name, string value)
+        private void AddQueryParam(List<string> queryParams, string name, string? value)
         {
             if (!string.IsNullOrWhiteSpace(value))
             {
@@ -132,30 +109,70 @@ namespace backend.Services.HistoricRecordings
             return Uri.EscapeDataString($"\"{time.Hours:D2}:{time.Minutes:D2}\"");
         }
 
-        // Other methods remain the same
+        public async Task<IEnumerable<RecordingSearchResult>> SearchRecordingsAsync(
+            RecordingSearchFiltersDto searchFiltersDto)
+        {
+            await _tokenService.SetBearerTokenAsync(_httpClient);
+
+
+            var baseUrl =
+                ClarifyGoApiEndpoints.HistoricRecordings.Search(searchFiltersDto.StartDate, searchFiltersDto.EndDate);
+            Console.WriteLine($"Base URL: {baseUrl}");
+
+            var queryParams = BuildQueryParameters(searchFiltersDto);
+            var fullUrl = queryParams.Any()
+                ? $"{baseUrl}?{string.Join("&", queryParams)}"
+                : baseUrl;
+
+            Console.WriteLine($"Full URL: {fullUrl}");
+
+            var response = await _httpClient.GetAsync(fullUrl);
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                throw new SecurityTokenExpiredException("Access token has expired");
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            // Deserialize into a RecordingSearchResults object.
+            var searchResultsObj = await response.Content.ReadFromJsonAsync<RecordingSearchResults>();
+
+            // Return the list of individual search results, or an empty list if null.
+            return searchResultsObj?.SearchResults ?? new List<RecordingSearchResult>();
+        }
+
+
         public async Task DeleteRecordingAsync(string recordingId)
         {
-            var url = ClarifyGoApiEndpoints.HistoricRecordings.Delete
-                .Replace("{recordingId}", recordingId);
+            await _tokenService.SetBearerTokenAsync(_httpClient);
+
+            var url = ClarifyGoApiEndpoints.HistoricRecordings.Delete(recordingId);
+
             var response = await _httpClient.DeleteAsync(url);
             response.EnsureSuccessStatusCode();
         }
 
         public async Task<Stream> ExportMp3Async(string recordingId)
         {
-            var url = ClarifyGoApiEndpoints.HistoricRecordings.ExportMp3
-                .Replace("{recordingId}", recordingId);
+            await _tokenService.SetBearerTokenAsync(_httpClient);
+
+            var url = ClarifyGoApiEndpoints.HistoricRecordings.ExportMp3(recordingId);
+
             var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
+
             return await response.Content.ReadAsStreamAsync();
         }
 
         public async Task<Stream> ExportWavAsync(string recordingId)
         {
-            var url = ClarifyGoApiEndpoints.HistoricRecordings.ExportWav
-                .Replace("{recordingId}", recordingId);
+            await _tokenService.SetBearerTokenAsync(_httpClient);
+
+            var url = ClarifyGoApiEndpoints.HistoricRecordings.ExportWav(recordingId);
+
             var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
+
             return await response.Content.ReadAsStreamAsync();
         }
     }

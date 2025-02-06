@@ -18,17 +18,10 @@ public class LiveRecordingsService(HttpClient httpClient, ITokenService tokenSer
 
     public async Task<IEnumerable<Recording>> GetLiveRecordingsAsync()
     {
-        var token = _tokenService.GetAccessTokenFromContext();
-
-        if (string.IsNullOrEmpty(token))
-        {
-            throw new UnauthorizedAccessException("Missing access token");
-        }
-
-        _httpClient.SetBearerToken(token);
+        await _tokenService.SetBearerTokenAsync(_httpClient);
 
         var response = await _httpClient.GetAsync(
-            ClarifyGoApiEndpoints.LiveRecordings.GetAll);
+            ClarifyGoApiEndpoints.LiveRecordings.GetAll());
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
@@ -42,18 +35,9 @@ public class LiveRecordingsService(HttpClient httpClient, ITokenService tokenSer
 
     public async Task ResumeRecordingAsync(string recorderId, string recordingId)
     {
-        var token = _tokenService.GetAccessTokenFromContext();
+        await _tokenService.SetBearerTokenAsync(_httpClient);
 
-        if (string.IsNullOrEmpty(token))
-        {
-            throw new UnauthorizedAccessException("Missing access token");
-        }
-
-        _httpClient.SetBearerToken(token);
-
-        var endpoint = ClarifyGoApiEndpoints.LiveRecordings.PutResume
-            .Replace("{recorderId}", recorderId)
-            .Replace("{recordingId}", recordingId);
+        var endpoint = ClarifyGoApiEndpoints.LiveRecordings.Resume(recorderId, recordingId);
 
         var response = await _httpClient.PutAsync(endpoint, null);
 
@@ -67,19 +51,9 @@ public class LiveRecordingsService(HttpClient httpClient, ITokenService tokenSer
 
     public async Task PauseRecordingAsync(string recorderId, string recordingId)
     {
-        var token = _tokenService.GetAccessTokenFromContext();
+        await _tokenService.SetBearerTokenAsync(_httpClient);
 
-
-        if (string.IsNullOrEmpty(token))
-        {
-            throw new UnauthorizedAccessException("Missing access token");
-        }
-
-        _httpClient.SetBearerToken(token);
-
-        var endpoint = ClarifyGoApiEndpoints.LiveRecordings.PutPause
-            .Replace("{recorderId}", recorderId)
-            .Replace("{recordingId}", recordingId);
+        var endpoint = ClarifyGoApiEndpoints.LiveRecordings.Pause(recorderId, recordingId);
 
         var response = await _httpClient.PutAsync(endpoint, null);
 

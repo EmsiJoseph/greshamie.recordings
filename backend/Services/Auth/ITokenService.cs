@@ -1,8 +1,10 @@
-﻿namespace backend.Services.Auth
+﻿using IdentityModel.Client;
+
+namespace backend.Services.Auth
 {
     public interface ITokenService
     {
-        string? GetAccessTokenFromContext();
-        Task<string> GetAccessTokenAsync(string username, string password);
+        Task SetBearerTokenAsync(HttpClient httpClientFromExternalService);
+        Task<TokenResponse> GetAccessTokenFromClarifyGo(string username, string password);
     }
 }
