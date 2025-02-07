@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 
@@ -40,6 +41,11 @@ namespace backend.Controllers
             _protector = dataProtectionProvider.CreateProtector("ClarifyGoAccessTokenProtector");
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _auditService = auditService;
+        }
+
+        private string GenerateRefreshToken()
+        {
+            return Convert.ToBase64String(Guid.NewGuid().ToByteArray());
         }
 
         [HttpPost("login")]
@@ -94,19 +100,23 @@ namespace backend.Controllers
                     // Update token info for an existing user.
                     user.ClarifyGoAccessToken = encryptedToken;
                     user.ClarifyGoAccessTokenExpiry = tokenExpiry;
-
+                    user.RefreshToken = GenerateRefreshToken();
+                    user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
                     await _userManager.UpdateAsync(user);
                 }
-
                 // Generate a JWT token for our backend to return to the client.
                 var jwtToken = GenerateJwtToken(user);
                 await _auditService.LogAuditEntryAsync(user.Id, AuditEventTypes.UserLoggedIn,
                     "User logged in successfully.");
                 return Ok(new
                 {
-                    user_name = user.UserName,
-                    access_token = jwtToken.Token,
-                    expires_in = jwtToken.ExpiresIn
+                    user = new { user_name = user.UserName },
+                    accessToken = new
+                    {
+                        value = jwtToken.Token,
+                        expiresIn = jwtToken.ExpiresIn
+                    },
+                    refreshToken = user.RefreshToken
                 });
             }
             catch (Exception ex)
@@ -114,6 +124,38 @@ namespace backend.Controllers
                 _logger.LogError(ex, "Login failed for user: {Username}", request.Username);
                 return Unauthorized(new { message = "Invalid credentials" });
             }
+        }
+
+        [HttpPost("refresh")]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            if (string.IsNullOrEmpty(request.RefreshToken))
+            {
+                return BadRequest(new { message = "Refresh token is required" });
+            }
+
+            var user = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.RefreshToken == request.RefreshToken);
+
+            if (user == null ||
+                user.RefreshTokenExpiry == null ||
+                user.RefreshTokenExpiry < DateTime.UtcNow)
+            {
+                return Unauthorized(new { message = "Invalid refresh token" });
+            }
+
+            // Generate new tokens
+            var jwtToken = GenerateJwtToken(user);
+            user.RefreshToken = GenerateRefreshToken();
+            user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new
+            {
+                accessToken = jwtToken.Token,
+                refreshToken = user.RefreshToken,
+                expiresIn = jwtToken.ExpiresIn
+            });
         }
 
         private JwtTokenResult GenerateJwtToken(User user)
@@ -196,7 +238,13 @@ namespace backend.Controllers
             return Ok(new { message = "Logged out successfully." });
         }
     }
+
+    public class RefreshTokenRequest
+    {
+        [Required] public string RefreshToken { get; set; } = string.Empty;
+    }
 }
+
 
 
 public class LoginRequest
@@ -211,3 +259,4 @@ public class JwtTokenResult
     public string Token { get; set; } = string.Empty;
     public int ExpiresIn { get; set; }
 }
+
