@@ -2,23 +2,34 @@ trigger:
   branches:
     include:
       - backend-main
+
 pool:
   vmImage: 'ubuntu-latest'
 
+variables:
+  - group: azure-devops-secrets
+  - name: AZURE_DEVOPS_PAT
+    value: $(AZURE_DEVOPS_PAT)
+
 steps:
 - checkout: self
-  fetchDepth: 0
+  persistCredentials: true
 
 - script: |
-    # Set up Git configurations
+    # Configure Git for Azure DevOps with PAT Authentication
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
-    git config --global user.name "Mc Joseph"
+    git config --global user.name "Azure DevOps"
+    git config --global credential.helper store
 
-    # Ensure we are on the latest backend-main
+    # Set up authentication for Azure DevOps
+    echo "https://$(AZURE_DEVOPS_PAT)@wizardcloud.visualstudio.com" > ~/.git-credentials
+    chmod 600 ~/.git-credentials
+
+    # Ensure we are on backend-main and up-to-date
     git checkout backend-main
     git pull origin backend-main
 
-    # Create a new working branch from backend-main
+    # Create a new working branch for merging
     git checkout -b merge-backend-folder
 
     # Ensure backend-only-dev is up-to-date
@@ -26,13 +37,15 @@ steps:
     git checkout backend-only-dev
     git pull origin backend-only-dev
 
-    # Merge only the /backend/ folder contents from backend-main
+    # Merge only the /backend/ folder from backend-main
     git checkout merge-backend-folder -- backend/
 
-    # Add and commit the changes
+    # Add and commit changes
     git add backend/
-    git commit -m "Merge backend folder updates from backend-main to backend-only-dev"
+    git commit -m "Merged backend folder from backend-main to backend-only-dev"
 
     # Push the changes back to backend-only-dev
     git push origin backend-only-dev
   displayName: 'Merge /backend/ folder from backend-main to backend-only-dev'
+  env:
+    AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
