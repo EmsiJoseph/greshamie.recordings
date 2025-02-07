@@ -1,8 +1,7 @@
 trigger:
   branches:
     include:
-      - backend-main  # Trigger when pushing to backend-main
-
+      - backend-main
 pool:
   vmImage: 'ubuntu-latest'
 
@@ -13,7 +12,7 @@ steps:
 - script: |
     # Set up Git configurations
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
-    git config --global user.name "Azure DevOps"
+    git config --global user.name "Mc Joseph"
 
     # Ensure we are on the latest backend-main
     git checkout backend-main
