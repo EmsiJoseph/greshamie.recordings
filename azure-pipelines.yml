@@ -1,0 +1,32 @@
+trigger:
+  branches:
+    include:
+      - backend-main
+
+variables:
+  - name: GITHUB_USERNAME
+    value: EmsiJoseph
+  - name: GITHUB_REPO
+    value: greshamie.recordings.backend
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- checkout: self
+  fetchDepth: 0
+
+- script: |
+    git remote remove github || true
+    git remote add github https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config --global user.name "Azure DevOps"
+
+    # Create a branch with ONLY the backend/ folder
+    git checkout -b backend-only
+    git filter-branch --subdirectory-filter backend -- --all
+
+    # Push to GitHub's main branch
+    git push github HEAD:main --force
+  env:
+    GITHUB_PAT: $(GITHUB_PAT)
