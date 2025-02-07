@@ -5,6 +5,7 @@ using System.Text;
 using backend.Models;
 using backend.Services.Audits;
 using backend.Constants;
+using backend.Data.Models;
 using backend.Services.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -90,14 +91,14 @@ namespace backend.Controllers
 
             try
             {
-                // Get token from ClarifyGo (replace with actual service)
+                // Get token from ClarifyGo
                 var tokenResponse = await _tokenService.GetAccessTokenFromClarifyGo(request.Username, request.Password);
                 if (tokenResponse.IsError)
                 {
                     return Unauthorized(new { message = "Invalid credentials" });
                 }
 
-                // Create or update user and generate JWT token
+               // Find or create the Identity user.
                 var user = await _userManager.FindByNameAsync(request.Username);
                 if (user == null)
                 {
@@ -107,6 +108,9 @@ namespace backend.Controllers
                     };
 
                     var createResult = await _userManager.CreateAsync(user, request.Password);
+
+                    await _userManager.AddToRoleAsync(user, RolesConstants.User);
+
                     if (!createResult.Succeeded)
                     {
                         return StatusCode(StatusCodes.Status500InternalServerError,
@@ -137,7 +141,7 @@ namespace backend.Controllers
                         value = jwtToken,
                         expires_in = expiresIn
                     },
-                    refresh_token = refreshToken  // Include the refresh token in the response
+                    refreshToken = user.RefreshToken
                 });
             }
             catch (Exception ex)
@@ -146,7 +150,6 @@ namespace backend.Controllers
                 return Unauthorized(new { message = "Invalid credentials" });
             }
         }
-
 
         [HttpPost("refresh")]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
@@ -263,3 +266,4 @@ namespace backend.Controllers
         public int ExpiresIn { get; set; }
     }
 }
+
