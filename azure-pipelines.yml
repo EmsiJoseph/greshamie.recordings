@@ -3,42 +3,40 @@ trigger:
     include:
       - backend-main
 
+variables:
+  - group: github-secrets
+  - name: GITHUB_USERNAME
+    value: EmsiJoseph
+  - name: GITHUB_REPO
+    value: greshamie.recordings.backend
+
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
 - checkout: self
-  persistCredentials: true
+  fetchDepth: 0
 
 - script: |
-    # Configure Git for Azure DevOps with PAT Authentication
+    # Remove existing remote (if any)
+    git remote remove github || true
+    # Add GitHub remote with PAT authentication
+    git remote add github https://$(GITHUB_USERNAME):$(GITHUB_PAT)@github.com/$(GITHUB_USERNAME)/$(GITHUB_REPO).git
+    # Verify remote
+    git remote -v
+    # Configure Git user (required for push)
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config --global user.name "Azure DevOps"
-    git config --global credential.helper store
-
-    # Set up authentication for Azure DevOps
-    echo "https://$(AZURE_DEVOPS_PAT)@wizardcloud.visualstudio.com" > ~/.git-credentials
-    chmod 600 ~/.git-credentials
-
-    # Ensure we are on backend-main and up-to-date
-    git checkout backend-main
-    git pull origin backend-main
-
-    # Create a new working branch for merging
-    git checkout -b merge-backend-folder
-
-    # Ensure backend-only-dev is up-to-date
-    git fetch origin backend-only-dev
-    git checkout backend-only-dev
-    git pull origin backend-only-dev
-
-    # Merge only the /backend/ folder from backend-main
-    git checkout merge-backend-folder -- backend/
-
-    # Add and commit changes
+    
+    # Create a new temporary branch to push only the backend/ folder
+    git checkout -b backend-only
+    # Remove all files except backend/ to ensure only backend/ is pushed
+    git rm -r --cached .
+    git reset --hard
     git add backend/
-    git commit -m "Merged backend folder from backend-main to backend-only-dev"
+    git commit -m "Push backend-only updates"
 
-    # Push the changes back to backend-only-dev
-    git push origin backend-only-dev
-  displayName: 'Merge /backend/ folder from backend-main to backend-only-dev'
+    # Push only the backend/ folder to the main branch
+    git push github backend-only:refs/heads/main --force
+  env:
+    GITHUB_PAT: $(GITHUB_PAT)
