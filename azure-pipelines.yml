@@ -6,11 +6,6 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-variables:
-  - group: azure-devops-secrets
-  - name: AZURE_DEVOPS_PAT
-    value: $(AZURE_DEVOPS_PAT)
-
 steps:
 - checkout: self
   persistCredentials: true
@@ -47,5 +42,3 @@ steps:
     # Push the changes back to backend-only-dev
     git push origin backend-only-dev
   displayName: 'Merge /backend/ folder from backend-main to backend-only-dev'
-  env:
-    AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
