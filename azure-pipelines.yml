@@ -1,0 +1,39 @@
+trigger:
+  branches:
+    include:
+      - backend-main
+
+variables:
+  - name: GITHUB_USERNAME
+    value: EmsiJoseph
+  - name: GITHUB_REPO
+    value: greshamie.recordings.backend
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- checkout: self
+  fetchDepth: 0
+
+- script: |
+    # Remove existing remote (if any)
+    git remote remove github || true
+    # Add GitHub remote with PAT authentication
+    git remote add github https://$(GITHUB_USERNAME):$(GITHUB_PAT)@github.com/$(GITHUB_USERNAME)/$(GITHUB_REPO).git
+    # Verify remote
+    git remote -v
+    # Configure Git user (required for push)
+    git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config --global user.name "Azure DevOps"
+    
+    # Create a new temporary branch to push only the backend/ folder
+    git checkout -b backend-only
+    # Remove all files except backend/ to ensure only backend/ is pushed
+    git rm -r --cached .
+    git reset --hard
+    git add backend/
+    git commit -m "Push backend-only updates"
+
+    # Push only the backend/ folder to the main branch
+    git push github backend-only:refs/heads/main --force
