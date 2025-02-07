@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - backend-main
+      - backend-only-dev
 
 variables:
   - name: GITHUB_USERNAME
@@ -26,7 +26,7 @@ steps:
     # Configure Git user (required for push)
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config --global user.name "Azure DevOps"
-    
+
     # Create a new temporary branch to push only the backend/ folder
     git checkout -b backend-only
     # Remove all files except backend/ to ensure only backend/ is pushed
@@ -34,6 +34,6 @@ steps:
     git reset --hard
     git add backend/
     git commit -m "Push backend-only updates"
-
-    # Push only the backend/ folder to the main branch
-    git push github backend-only:refs/heads/main --force
+    
+    # Push to GitHub (replace HEAD:main if needed)
+    git push github HEAD:refs/heads/main --force
