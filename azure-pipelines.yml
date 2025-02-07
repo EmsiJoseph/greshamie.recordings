@@ -4,7 +4,6 @@ trigger:
       - backend-main
 
 variables:
-  - group: github-secrets
   - name: GITHUB_USERNAME
     value: EmsiJoseph
   - name: GITHUB_REPO
@@ -38,5 +37,3 @@ steps:
 
     # Push only the backend/ folder to the main branch
     git push github backend-only:refs/heads/main --force
-  env:
-    GITHUB_PAT: $(GITHUB_PAT)
