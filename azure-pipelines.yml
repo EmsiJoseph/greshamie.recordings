@@ -1,0 +1,39 @@
+trigger:
+  branches:
+    include:
+      - backend-main  # Trigger when pushing to backend-main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- checkout: self
+  fetchDepth: 0
+
+- script: |
+    # Set up Git configurations
+    git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config --global user.name "Azure DevOps"
+
+    # Ensure we are on the latest backend-main
+    git checkout backend-main
+    git pull origin backend-main
+
+    # Create a new working branch from backend-main
+    git checkout -b merge-backend-folder
+
+    # Ensure backend-only-dev is up-to-date
+    git fetch origin backend-only-dev
+    git checkout backend-only-dev
+    git pull origin backend-only-dev
+
+    # Merge only the /backend/ folder contents from backend-main
+    git checkout merge-backend-folder -- backend/
+
+    # Add and commit the changes
+    git add backend/
+    git commit -m "Merge backend folder updates from backend-main to backend-only-dev"
+
+    # Push the changes back to backend-only-dev
+    git push origin backend-only-dev
+  displayName: 'Merge /backend/ folder from backend-main to backend-only-dev'
