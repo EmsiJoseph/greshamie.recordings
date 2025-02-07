@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - backend-only-dev
+      - backend-main
 
 variables:
   - name: GITHUB_USERNAME
@@ -37,3 +37,6 @@ steps:
     
     # Push to GitHub (replace HEAD:main if needed)
     git push github HEAD:refs/heads/main --force
+    
+  env:
+    GITHUB_PAT: $(GITHUB_PAT)
