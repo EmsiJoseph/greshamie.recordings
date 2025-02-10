@@ -4,29 +4,43 @@ trigger:
       - backend-main
 
 variables:
-  - name: GITHUB_USERNAME
-    value: EmsiJoseph
-  - name: GITHUB_REPO
-    value: greshamie.recordings.backend
+  GITHUB_USERNAME: 'EmsiJoseph'
+  GITHUB_REPO: 'greshamie.recordings.backend'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- checkout: self
-  fetchDepth: 0
+- checkout: none
 
 - script: |
-    git remote remove github || true
-    git remote add github https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
-    git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
-    git config --global user.name "Azure DevOps"
+    # Fail on any error and show each command
+    set -euxo pipefail
 
-    # Create a branch with ONLY the backend/ folder
-    git checkout -b backend-only
-    git filter-branch --subdirectory-filter backend -- --all
+    # 1. Clone the GitHub repository using your PAT for authentication
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    cd $GITHUB_REPO
 
-    # Push to GitHub's main branch
-    git push github HEAD:main --force
+    # 2. Configure Git identity for commit attribution
+    git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config user.name "Azure DevOps"
+
+    # 3. Add the Azure DevOps repository as a remote named "azure" 
+    #    Use $(System.AccessToken) for authentication.
+    #    Make sure "Allow scripts to access the OAuth token" is enabled.
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
+
+    # 4. Fetch the 'backend-main' branch from the Azure remote
+    git fetch azure backend-main
+
+    # 5. Checkout the GitHub main branch
+    git checkout main
+
+    # 6. Merge changes from the Azure repo's backend-main branch into the backend/ folder
+    #    using a subtree pull (with squash commit) to incorporate all changes under "backend"
+    git subtree pull --prefix=backend azure backend-main --squash -m "Update backend from Azure"
+
+    # 7. Push any new commit(s) to GitHub
+    git push origin main
   env:
     GITHUB_PAT: $(GITHUB_PAT)
