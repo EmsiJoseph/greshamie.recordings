@@ -17,23 +17,16 @@ steps:
   fetchDepth: 0
 
 - script: |
-    # Remove existing remote (if any)
     git remote remove github || true
-    # Add GitHub remote with PAT authentication
-    git remote add github https://$(GITHUB_USERNAME):$(GITHUB_PAT)@github.com/$(GITHUB_USERNAME)/$(GITHUB_REPO).git
-    # Verify remote
-    git remote -v
-    # Configure Git user (required for push)
+    git remote add github https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config --global user.name "Azure DevOps"
-    
-    # Create a new temporary branch to push only the backend/ folder
-    git checkout -b backend-only
-    # Remove all files except backend/ to ensure only backend/ is pushed
-    git rm -r --cached .
-    git reset --hard
-    git add backend/
-    git commit -m "Push backend-only updates"
 
-    # Push only the backend/ folder to the main branch
-    git push github backend-only:refs/heads/main --force
+    # Create a branch with ONLY the backend/ folder
+    git checkout -b backend-only
+    git filter-branch --subdirectory-filter backend -- --all
+
+    # Push to GitHub's main branch
+    git push github HEAD:main --force
+  env:
+    GITHUB_PAT: $(GITHUB_PAT)
