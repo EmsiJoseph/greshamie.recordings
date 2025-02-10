@@ -14,7 +14,7 @@ steps:
 - checkout: none
 
 - script: |
-    # Exit immediately on error, print each command, and treat unset variables as errors.
+    # Exit immediately if any command fails, print each command, and treat unset variables as errors.
     set -euxo pipefail
 
     # 1. Clone the GitHub repository using your PAT for authentication.
@@ -32,17 +32,17 @@ steps:
     # 4. Fetch the backend-main branch from the azure remote.
     git fetch azure backend-main
 
-    # 5. (Optional) List the directories at the root of the backend-main branch for debugging.
+    # 5. (Optional) List directories in the remote branch for debugging.
     echo "Directories in azure/backend-main:"
     git ls-tree -d azure/backend-main
 
-    # 6. Get the commit hash of the remote branch.
-    COMMIT_HASH=$(git rev-parse azure/backend-main)
-    echo "Commit hash for azure/backend-main: $COMMIT_HASH"
+    # 6. Get the last commit hash that affected the 'backend' folder.
+    LAST_BACKEND_COMMIT=$(git log -n 1 --pretty=format:%H azure/backend-main -- backend)
+    echo "Last commit hash affecting the backend folder: $LAST_BACKEND_COMMIT"
 
-    # 7. Create a temporary branch (backend-split) that contains only the contents of the "backend" folder.
-    #    Passing the commit hash explicitly ensures Git operates on the correct tree.
-    git subtree split --prefix=backend -b backend-split $COMMIT_HASH
+    # 7. Create a temporary branch (backend-split) that contains only the contents of the 'backend' folder
+    #    as of the last commit that touched it.
+    git subtree split --prefix=backend -b backend-split $LAST_BACKEND_COMMIT
 
     # 8. Merge the subtree branch into the current branch (main) with a squash commit.
     git merge --squash backend-split -m "Update backend from Azure"
