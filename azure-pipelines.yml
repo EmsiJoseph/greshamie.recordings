@@ -24,21 +24,23 @@ steps:
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config user.name "Azure DevOps"
 
-    # 3. Add Azure DevOps remote
+    # 3. Store current GitHub workflows (if they exist) in stash
+    if [ -d ".github" ]; then
+        git stash push .github/
+        WORKFLOWS_STASHED=true
+    else
+        WORKFLOWS_STASHED=false
+    fi
+
+    # 4. Add Azure DevOps remote
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
 
-    # 4. Fetch and checkout the Azure backend-main branch
+    # 5. Fetch and checkout the Azure backend-main branch
     git fetch azure backend-main
     git checkout azure/backend-main
 
-    # 5. Create and checkout a temporary branch
+    # 6. Create and checkout a temporary branch
     git checkout -b temp-working-branch
-
-    # 6. Save GitHub workflows if they exist
-    if [ -d ".github" ]; then
-        mkdir -p ../.github-backup
-        cp -r .github/* ../.github-backup/
-    fi
 
     # 7. Perform the subtree split
     git subtree split --prefix=backend -b backend-split
@@ -53,10 +55,9 @@ steps:
         git checkout -b main backend-split
     fi
 
-    # 9. Restore GitHub workflows
-    if [ -d "../.github-backup" ]; then
-        mkdir -p .github
-        cp -r ../.github-backup/* .github/
+    # 9. Restore GitHub workflows if they were stashed
+    if [ "$WORKFLOWS_STASHED" = true ]; then
+        git stash pop
         git add .github
         git commit -m "Restore GitHub workflows"
     fi
@@ -67,6 +68,5 @@ steps:
     # 11. Cleanup
     git branch -D backend-split
     git branch -D temp-working-branch
-    rm -rf ../.github-backup
   env:
     GITHUB_PAT: $(GITHUB_PAT)
