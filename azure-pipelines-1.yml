@@ -17,7 +17,7 @@ steps:
 
     # 1. Add the current repository as a remote called 'azure'.
     #    This simulates adding your Azure DevOps repo as a remote.
-    git remote add azure $(Build.Repository.Uri)
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
     
     # 2. Fetch the backend-main branch from the 'azure' remote.
     git fetch azure backend-main
