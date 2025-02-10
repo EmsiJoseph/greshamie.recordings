@@ -14,30 +14,33 @@ steps:
 - checkout: none
 
 - script: |
-    # Exit immediately if a command exits with a non-zero status,
-    # print each command, and fail if any unset variable is used.
+    # Fail on any error and show each command
     set -euxo pipefail
 
     # 1. Clone the GitHub repository using your PAT for authentication
     git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
     cd $GITHUB_REPO
 
-    # 2. Configure Git identity for commit author info
+    # 2. Configure Git identity for commit attribution
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
-    git config user.name "MC Joseph"
+    git config user.name "Azure DevOps"
 
-    # 3. Add the Azure repository as a remote called "azure" and fetch the backend branch
-    git remote add azure $(Build.Repository.Uri)
+    # 3. Add the Azure DevOps repository as a remote named "azure" 
+    #    Use $(System.AccessToken) for authentication.
+    #    Make sure "Allow scripts to access the OAuth token" is enabled.
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
+
+    # 4. Fetch the 'backend-main' branch from the Azure remote
     git fetch azure backend-main
 
-    # 4. Checkout the main branch of the GitHub repo
+    # 5. Checkout the GitHub main branch
     git checkout main
 
-    # 5. Merge changes from the Azure repo's backend-main branch into the backend/ folder
-    #    using the subtree pull strategy with a squash commit.
+    # 6. Merge changes from the Azure repo's backend-main branch into the backend/ folder
+    #    using a subtree pull (with squash commit) to incorporate all changes under "backend"
     git subtree pull --prefix=backend azure backend-main --squash -m "Update backend from Azure"
 
-    # 6. Push changes to GitHub (if there are any new commits)
+    # 7. Push any new commit(s) to GitHub
     git push origin main
   env:
     GITHUB_PAT: $(GITHUB_PAT)
