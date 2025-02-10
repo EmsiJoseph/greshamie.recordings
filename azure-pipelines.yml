@@ -14,7 +14,7 @@ steps:
 - checkout: none
 
 - script: |
-    # Exit immediately on errors, print each command, and treat unset variables as errors.
+    # Exit immediately on error, print each command, and treat unset variables as errors.
     set -euxo pipefail
 
     # 1. Clone the GitHub repository using your PAT for authentication.
@@ -26,18 +26,18 @@ steps:
     git config user.name "Azure DevOps"
 
     # 3. Add the Azure DevOps repository as a remote named "azure".
-    #    Make sure "Allow scripts to access the OAuth token" is enabled so that $(System.AccessToken) is available.
+    #    The URL uses $(System.AccessToken) for authentication.
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
 
     # 4. Fetch the 'backend-main' branch from the Azure remote.
     git fetch azure backend-main
 
-    # 5. Create a temporary branch (backend-split) containing only the contents of the "backend" folder.
+    # 5. Create a temporary branch (backend-split) that contains only the contents of the "backend" folder.
     #    This command “splits” the subtree located at 'backend' so that its contents become the root of the new branch.
     git subtree split --prefix=backend -b backend-split azure/backend-main
 
     # 6. Merge the subtree branch into the current branch (main) with a squash commit.
-    #    This effectively brings the contents of the "backend" folder from Azure into the root of your GitHub repo.
+    #    This brings the contents of the "backend" folder (from the Azure repo) into the root of your GitHub repo.
     git merge --squash backend-split -m "Update backend from Azure"
 
     # 7. Remove the temporary branch.
