@@ -13,27 +13,26 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- checkout: self
-  fetchDepth: 0
+- checkout: none
 
 - script: |
-    git remote remove github || true
-    git remote add github https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    # Clone GitHub repo
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    cd $GITHUB_REPO
+
+    # Configure Git identity
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config --global user.name "Azure DevOps"
 
-    # Fetch the latest changes from the remote repository
-    git fetch github main
+    # Add Azure repo as remote
+    git remote add azure $(Build.Repository.Uri)
+    git fetch azure backend-main
 
-    # Switch to the main branch and make sure it's up to date
+    # Merge changes using subtree strategy
     git checkout main
-    git pull github main
+    git subtree pull --prefix=backend azure backend-main --squash -m "Update backend from Azure"
 
-    # Add only the backend directory and commit changes
-    git add backend/
-    git diff --cached --quiet || git commit -m "Update backend files from Azure DevOps"
-
-    # Push only the updates (no --force)
-    git push github main
+    # Push changes safely
+    git push origin main
   env:
     GITHUB_PAT: $(GITHUB_PAT)
