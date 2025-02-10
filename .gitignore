@@ -24,6 +24,7 @@ project.lock.json
 project.fragment.lock.json
 project.json.lock.tmp
 *.build.csdef
+!Services\Audits\AuditService.cs
 
 # Logs
 *.log
