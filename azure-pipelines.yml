@@ -34,10 +34,16 @@ steps:
     # 5. Create and checkout a temporary branch
     git checkout -b temp-working-branch
 
-    # 6. Perform the subtree split
+    # 6. Save GitHub workflows if they exist
+    if [ -d ".github" ]; then
+        mkdir -p ../.github-backup
+        cp -r .github/* ../.github-backup/
+    fi
+
+    # 7. Perform the subtree split
     git subtree split --prefix=backend -b backend-split
 
-    # 7. Check if main branch exists and handle accordingly
+    # 8. Check if main branch exists and handle accordingly
     if git show-ref --verify --quiet refs/heads/main; then
         # Main exists - checkout and reset to backend-split
         git checkout main
@@ -47,11 +53,20 @@ steps:
         git checkout -b main backend-split
     fi
 
-    # 8. Push to GitHub with force to ensure updates
+    # 9. Restore GitHub workflows
+    if [ -d "../.github-backup" ]; then
+        mkdir -p .github
+        cp -r ../.github-backup/* .github/
+        git add .github
+        git commit -m "Restore GitHub workflows"
+    fi
+
+    # 10. Push to GitHub with force to ensure updates
     git push origin main --force
 
-    # 9. Cleanup
+    # 11. Cleanup
     git branch -D backend-split
     git branch -D temp-working-branch
+    rm -rf ../.github-backup
   env:
     GITHUB_PAT: $(GITHUB_PAT)
