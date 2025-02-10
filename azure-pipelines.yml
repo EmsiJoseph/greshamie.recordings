@@ -24,7 +24,7 @@ steps:
 
     # 2. Configure Git identity for commit author info
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
-    git config user.name "Azure DevOps"
+    git config user.name "MC Joseph"
 
     # 3. Add the Azure repository as a remote called "azure" and fetch the backend branch
     git remote add azure $(Build.Repository.Uri)
