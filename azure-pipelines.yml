@@ -14,7 +14,6 @@ steps:
 - checkout: none
 
 - script: |
-    # Exit immediately on error, print each command, and treat unset variables as errors.
     set -euxo pipefail
 
     # 1. Clone the GitHub repository using your PAT for authentication.
@@ -26,24 +25,29 @@ steps:
     git config user.name "Azure DevOps"
 
     # 3. Add the Azure DevOps repository as a remote named "azure".
-    #    The URL uses $(System.AccessToken) for authentication.
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
 
-    # 4. Fetch the 'backend-main' branch from the Azure remote.
+    # 4. Fetch the backend-main branch from the azure remote.
     git fetch azure backend-main
 
-    # 5. Create a temporary branch (backend-split) that contains only the contents of the "backend" folder.
-    #    This command “splits” the subtree located at 'backend' so that its contents become the root of the new branch.
-    git subtree split --prefix=backend -b backend-split azure/backend-main
+    # 5. (Optional) List directories for debugging.
+    echo "Directories in azure/backend-main:"
+    git ls-tree -d azure/backend-main
 
-    # 6. Merge the subtree branch into the current branch (main) with a squash commit.
-    #    This brings the contents of the "backend" folder (from the Azure repo) into the root of your GitHub repo.
+    # 6. Get the tip commit hash of azure/backend-main.
+    COMMIT_HASH=$(git rev-parse azure/backend-main)
+    echo "Using tip commit for subtree split: $COMMIT_HASH"
+
+    # 7. Create a temporary branch (backend-split) that contains only the contents of the 'backend' folder.
+    git subtree split --prefix=backend -b backend-split $COMMIT_HASH
+
+    # 8. Merge the subtree branch into the current branch (main) with a squash commit.
     git merge --squash backend-split -m "Update backend from Azure"
 
-    # 7. Remove the temporary branch.
+    # 9. Remove the temporary branch.
     git branch -D backend-split
 
-    # 8. Push the changes to GitHub.
+    # 10. Push the changes to GitHub.
     git push origin main
   env:
     GITHUB_PAT: $(GITHUB_PAT)
