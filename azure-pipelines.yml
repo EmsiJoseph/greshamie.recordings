@@ -31,35 +31,27 @@ steps:
     git fetch azure backend-main
     git checkout azure/backend-main
 
-    # 5. Debug: List directories
-    echo "Current directory structure:"
-    ls -la
+    # 5. Create and checkout a temporary branch
+    git checkout -b temp-working-branch
 
-    # 6. Verify backend directory exists
-    if [ -d "backend" ]; then
-        echo "Backend directory found"
-    else
-        echo "Backend directory not found"
-        exit 1
-    fi
-
-    # 7. Create and switch to a new branch
-    git checkout -b temp-branch
-
-    # 8. Perform the subtree split
+    # 6. Perform the subtree split
     git subtree split --prefix=backend -b backend-split
 
-    # 9. Create and switch to main branch
-    git checkout -b main
+    # 7. Check if main branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/main; then
+        # Main exists - checkout and reset to backend-split
+        git checkout main
+        git reset --hard backend-split
+    else
+        # Main doesn't exist - create it from backend-split
+        git checkout -b main backend-split
+    fi
 
-    # 10. Merge the split branch
-    git merge backend-split --allow-unrelated-histories -m "Update backend from Azure"
-
-    # 11. Push to GitHub
+    # 8. Push to GitHub with force to ensure updates
     git push origin main --force
 
-    # 12. Cleanup
+    # 9. Cleanup
     git branch -D backend-split
-    git branch -D temp-branch
+    git branch -D temp-working-branch
   env:
     GITHUB_PAT: $(GITHUB_PAT)
