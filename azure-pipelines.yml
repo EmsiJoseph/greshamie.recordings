@@ -14,37 +14,36 @@ steps:
 - checkout: none
 
 - script: |
-    # Exit immediately if a command fails; print commands and error if any variable is not set.
+    # Exit immediately on errors, print each command, and treat unset variables as errors.
     set -euxo pipefail
 
-    # 1. Clone the GitHub repository using your PAT for authentication
+    # 1. Clone the GitHub repository using your PAT for authentication.
     git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
     cd $GITHUB_REPO
 
-    # 2. Configure Git identity for commit attribution
+    # 2. Configure Git identity for commit attribution.
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config user.name "Azure DevOps"
 
-    # 3. Add the Azure DevOps repository as a remote named "azure" 
-    #    Use the OAuth token (ensure "Allow scripts to access the OAuth token" is enabled)
+    # 3. Add the Azure DevOps repository as a remote named "azure".
+    #    Make sure "Allow scripts to access the OAuth token" is enabled so that $(System.AccessToken) is available.
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
 
-    # 4. Fetch the 'backend-main' branch from Azure
+    # 4. Fetch the 'backend-main' branch from the Azure remote.
     git fetch azure backend-main
 
-    # 5. Checkout the main branch of the GitHub repository
-    git checkout main
+    # 5. Create a temporary branch (backend-split) containing only the contents of the "backend" folder.
+    #    This command “splits” the subtree located at 'backend' so that its contents become the root of the new branch.
+    git subtree split --prefix=backend -b backend-split azure/backend-main
 
-    # 6. Update the backend subtree: if the "backend" folder doesn't exist, add it; otherwise, pull updates.
-    if [ -d "backend" ]; then
-      echo "Subtree 'backend' exists, pulling updates."
-      git subtree pull --prefix=backend azure backend-main --squash -m "Update backend from Azure"
-    else
-      echo "Subtree 'backend' does not exist, adding it."
-      git subtree add --prefix=backend azure backend-main --squash -m "Add backend from Azure"
-    fi
+    # 6. Merge the subtree branch into the current branch (main) with a squash commit.
+    #    This effectively brings the contents of the "backend" folder from Azure into the root of your GitHub repo.
+    git merge --squash backend-split -m "Update backend from Azure"
 
-    # 7. Push any new commit(s) to GitHub
+    # 7. Remove the temporary branch.
+    git branch -D backend-split
+
+    # 8. Push the changes to GitHub.
     git push origin main
   env:
     GITHUB_PAT: $(GITHUB_PAT)
