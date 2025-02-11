@@ -6,6 +6,7 @@ trigger:
 variables:
   GITHUB_USERNAME: 'EmsiJoseph'
   GITHUB_REPO: 'greshamie.recordings.backend'
+  TARGET_BRANCH: 'dev'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -23,6 +24,9 @@ steps:
     # 2. Configure Git identity
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config user.name "Azure DevOps"
+    
+    // Checkout to target branch ($TARGET_BRANCH)
+    git checkout -b $TARGET_BRANCH origin $TARGET_BRANCH
 
     # 3. Store current GitHub workflows (if they exist) in stash
     if [ -d ".github" ]; then
@@ -45,14 +49,14 @@ steps:
     # 7. Perform the subtree split
     git subtree split --prefix=backend -b backend-split
 
-    # 8. Check if dev branch exists and handle accordingly
-    if git show-ref --verify --quiet refs/heads/dev; then
+    # 8. Check if $TARGET_BRANCH branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/$TARGET_BRANCH; then
         # Main exists - checkout and reset to backend-split
-        git checkout dev
+        git checkout $TARGET_BRANCH
         git reset --hard backend-split
     else
         # Dev doesn't exist - create it from backend-split
-        git checkout -b dev backend-split
+        git checkout -b $TARGET_BRANCH backend-split
     fi
 
     # 9. Restore GitHub workflows if they were stashed
@@ -63,7 +67,7 @@ steps:
     fi
 
     # 10. Push to GitHub with force to ensure updates
-    git push origin dev --force
+    git push origin $TARGET_BRANCH --force
 
     # 11. Cleanup
     git branch -D backend-split
