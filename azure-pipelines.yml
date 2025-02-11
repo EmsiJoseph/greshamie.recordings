@@ -6,7 +6,6 @@ trigger:
 variables:
   GITHUB_USERNAME: 'EmsiJoseph'
   GITHUB_REPO: 'greshamie.recordings.backend'
-  TARGET_BRANCH: 'dev'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -24,53 +23,34 @@ steps:
     # 2. Configure Git identity
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config user.name "Azure DevOps"
-    
-    # 3. Fetch and checkout target branch
-    git fetch origin $TARGET_BRANCH || true
-    git checkout -b $TARGET_BRANCH || git checkout $TARGET_BRANCH
 
-    # 4. Store current GitHub workflows (if they exist) in stash
-    if [ -d ".github" ]; then
-        git stash push .github/
-        WORKFLOWS_STASHED=true
-    else
-        WORKFLOWS_STASHED=false
-    fi
-
-    # 5. Add Azure DevOps remote
+    # 4. Add Azure DevOps remote
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
 
-    # 6. Fetch and checkout the Azure backend-main branch
+    # 5. Fetch and checkout the Azure backend-main branch
     git fetch azure backend-main
     git checkout azure/backend-main
 
-    # 7. Create and checkout a temporary branch
+    # 6. Create and checkout a temporary branch
     git checkout -b temp-working-branch
 
-    # 8. Perform the subtree split
+    # 7. Perform the subtree split
     git subtree split --prefix=backend -b backend-split
 
-    # 9. Check if $TARGET_BRANCH branch exists and handle accordingly
-    if git show-ref --verify --quiet refs/heads/$TARGET_BRANCH; then
-        # Branch exists - checkout and reset to backend-split
-        git checkout $TARGET_BRANCH
+    # 8. Check if dev branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/dev; then
+        # Main exists - checkout and reset to backend-split
+        git checkout dev
         git reset --hard backend-split
     else
-        # Branch doesn't exist - create it from backend-split
-        git checkout -b $TARGET_BRANCH backend-split
+        # Dev doesn't exist - create it from backend-split
+        git checkout -b dev backend-split
     fi
 
-    # 10. Restore GitHub workflows if they were stashed
-    if [ "$WORKFLOWS_STASHED" = true ]; then
-        git stash pop
-        git add .github
-        git commit -m "Restore GitHub workflows"
-    fi
+     # 10. Push to GitHub with force to ensure updates
+    git push origin dev --force
 
-    # 11. Push to GitHub with force to ensure updates
-    git push origin $TARGET_BRANCH --force
-
-    # 12. Cleanup
+    # 11. Cleanup
     git branch -D backend-split
     git branch -D temp-working-branch
   env:
