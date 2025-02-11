@@ -4,29 +4,54 @@ trigger:
       - backend-main
 
 variables:
-  - name: GITHUB_USERNAME
-    value: EmsiJoseph
-  - name: GITHUB_REPO
-    value: greshamie.recordings.backend
+  GITHUB_USERNAME: 'EmsiJoseph'
+  GITHUB_REPO: 'greshamie.recordings.backend'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- checkout: self
-  fetchDepth: 0
+- checkout: none
 
 - script: |
-    git remote remove github || true
-    git remote add github https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
-    git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
-    git config --global user.name "Azure DevOps"
+    set -euxo pipefail
 
-    # Create a branch with ONLY the backend/ folder
-    git checkout -b backend-only
-    git filter-branch --subdirectory-filter backend -- --all
+    # 1. Clone the GitHub repository
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    cd $GITHUB_REPO
 
-    # Push to GitHub's main branch
-    git push github HEAD:main --force
+    # 2. Configure Git identity
+    git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config user.name "Azure DevOps"
+
+    # 4. Add Azure DevOps remote
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
+
+    # 5. Fetch and checkout the Azure backend-main branch
+    git fetch azure backend-main
+    git checkout azure/backend-main
+
+    # 6. Create and checkout a temporary branch
+    git checkout -b temp-working-branch
+
+    # 7. Perform the subtree split
+    git subtree split --prefix=backend -b backend-split
+
+    # 8. Check if dev branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/dev; then
+        # Main exists - checkout and reset to backend-split
+        git checkout dev
+        git reset --hard backend-split
+    else
+        # Dev doesn't exist - create it from backend-split
+        git checkout -b dev backend-split
+    fi
+
+     # 10. Push to GitHub with force to ensure updates
+    git push origin dev --force
+
+    # 11. Cleanup
+    git branch -D backend-split
+    git branch -D temp-working-branch
   env:
     GITHUB_PAT: $(GITHUB_PAT)
