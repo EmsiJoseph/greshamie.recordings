@@ -14,30 +14,59 @@ steps:
 - checkout: none
 
 - script: |
-    # Exit immediately if a command exits with a non-zero status,
-    # print each command, and fail if any unset variable is used.
     set -euxo pipefail
 
-    # 1. Clone the GitHub repository using your PAT for authentication
+    # 1. Clone the GitHub repository
     git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
     cd $GITHUB_REPO
 
-    # 2. Configure Git identity for commit author info
+    # 2. Configure Git identity
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config user.name "Azure DevOps"
 
-    # 3. Add the Azure repository as a remote called "azure" and fetch the backend branch
-    git remote add azure $(Build.Repository.Uri)
+    # 3. Add Azure DevOps remote
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
+
+    # 4. Fetch and checkout the Azure backend-main branch
     git fetch azure backend-main
+    git checkout azure/backend-main
 
-    # 4. Checkout the main branch of the GitHub repo
-    git checkout main
+    # 5. Create and checkout a temporary branch
+    git checkout -b temp-working-branch
 
-    # 5. Merge changes from the Azure repo's backend-main branch into the backend/ folder
-    #    using the subtree pull strategy with a squash commit.
-    git subtree pull --prefix=backend azure backend-main --squash -m "Update backend from Azure"
+    # 6. Save GitHub workflows if they exist
+    if [ -d ".github" ]; then
+        mkdir -p ../.github-backup
+        cp -r .github/* ../.github-backup/
+    fi
 
-    # 6. Push changes to GitHub (if there are any new commits)
-    git push origin main
+    # 7. Perform the subtree split
+    git subtree split --prefix=backend -b backend-split
+
+    # 8. Check if main branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/main; then
+        # Main exists - checkout and reset to backend-split
+        git checkout main
+        git reset --hard backend-split
+    else
+        # Main doesn't exist - create it from backend-split
+        git checkout -b main backend-split
+    fi
+
+    # 9. Restore GitHub workflows
+    if [ -d "../.github-backup" ]; then
+        mkdir -p .github
+        cp -r ../.github-backup/* .github/
+        git add .github
+        git commit -m "Restore GitHub workflows"
+    fi
+
+    # 10. Push to GitHub with force to ensure updates
+    git push origin main --force
+
+    # 11. Cleanup
+    git branch -D backend-split
+    git branch -D temp-working-branch
+    rm -rf ../.github-backup
   env:
     GITHUB_PAT: $(GITHUB_PAT)
