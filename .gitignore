@@ -8,7 +8,6 @@
 *.userosscache
 *.sln.docstates
 .idea/
-.github/
 
 
 # ASP.NET
