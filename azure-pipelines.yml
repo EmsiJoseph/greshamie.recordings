@@ -25,7 +25,7 @@ steps:
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config user.name "Azure DevOps"
     
-    // Checkout to target branch ($TARGET_BRANCH)
+    # Checkout to target branch ($TARGET_BRANCH)
     git checkout -b $TARGET_BRANCH origin $TARGET_BRANCH
 
     # 3. Store current GitHub workflows (if they exist) in stash
