@@ -45,14 +45,14 @@ steps:
     # 7. Perform the subtree split
     git subtree split --prefix=backend -b backend-split
 
-    # 8. Check if main branch exists and handle accordingly
-    if git show-ref --verify --quiet refs/heads/main; then
+    # 8. Check if dev branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/dev; then
         # Main exists - checkout and reset to backend-split
-        git checkout main
+        git checkout dev
         git reset --hard backend-split
     else
-        # Main doesn't exist - create it from backend-split
-        git checkout -b main backend-split
+        # Dev doesn't exist - create it from backend-split
+        git checkout -b dev backend-split
     fi
 
     # 9. Restore GitHub workflows if they were stashed
@@ -63,7 +63,7 @@ steps:
     fi
 
     # 10. Push to GitHub with force to ensure updates
-    git push origin main --force
+    git push origin dev --force
 
     # 11. Cleanup
     git branch -D backend-split
