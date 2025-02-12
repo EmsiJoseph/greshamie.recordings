@@ -54,7 +54,7 @@ steps:
     git checkout -b prod origin/prod
 
     # Auto-merge
-    git merge --no-ff dev -m "Auto-merge: dev → prod [skip ci]"
+    git merge --no-ff dev -m "Auto-merge"
     
     # Push changes
     git push origin prod
