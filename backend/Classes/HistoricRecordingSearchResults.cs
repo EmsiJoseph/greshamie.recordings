@@ -3,18 +3,21 @@
 namespace backend.Classes
 {
     // Represents the overall search results response.
-    public class RecordingSearchResults
+    public class HistoricRecordingSearchResults
     {
         [JsonPropertyName("searchResults")]
-        public List<RecordingSearchResult> SearchResults { get; set; } = new List<RecordingSearchResult>();
+        public List<HistoricRecordingSearchResult> SearchResults { get; set; } = new List<HistoricRecordingSearchResult>();
+        
+        [JsonPropertyName("totalResults")]
+        public int TotalResults { get; set; }
     }
 
     // Represents an individual search result item.
-    public class RecordingSearchResult
+    public class HistoricRecordingSearchResult
     {
         // The recording details.
         [JsonPropertyName("recording")]
-        public ClarifyGoRecordingRaw Recording { get; set; } = new ClarifyGoRecordingRaw();
+        public ClarifyGoHistoricRecordingRaw HistoricRecording { get; set; } = new ClarifyGoHistoricRecordingRaw();
 
         // Count of screen recordings.
         [JsonPropertyName("screenRecordingCount")]

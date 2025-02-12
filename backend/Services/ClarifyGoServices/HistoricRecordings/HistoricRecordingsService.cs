@@ -1,20 +1,30 @@
 using System.Net;
+using System.Text.Json;
 using backend.Classes;
 using backend.Constants;
 using backend.DTOs;
+using backend.Exceptions;
 using backend.Services.Auth;
 using IdentityModel.Client;
 using Microsoft.IdentityModel.Tokens;
 
 namespace backend.Services.ClarifyGoServices.HistoricRecordings
 {
-    public class HistoricRecordingsService(HttpClient httpClient, ITokenService tokenService)
-        : IHistoricRecordingsService
+    public class HistoricRecordingsService : IHistoricRecordingsService
     {
-        private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        private readonly HttpClient _httpClient;
+        private readonly ITokenService _tokenService;
 
-        private readonly ITokenService _tokenService =
-            tokenService ?? throw new ArgumentNullException(nameof(tokenService));
+        public HistoricRecordingsService(HttpClient httpClient, ITokenService tokenService)
+        {
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            _tokenService = tokenService ?? throw new ArgumentNullException(nameof(tokenService));
+        }
+
+        public void SetBearerToken(string token)
+        {
+            _httpClient.SetBearerToken(token);
+        }
 
         private List<string> BuildQueryParameters(RecordingSearchFiltersDto? filters)
         {
@@ -109,52 +119,97 @@ namespace backend.Services.ClarifyGoServices.HistoricRecordings
             return Uri.EscapeDataString($"\"{time.Hours:D2}:{time.Minutes:D2}\"");
         }
 
-        public async Task<IEnumerable<RecordingSearchResult>> SearchRecordingsAsync(
+        public async Task<IEnumerable<HistoricRecordingSearchResult>> SearchRecordingsAsync(
             RecordingSearchFiltersDto searchFiltersDto)
         {
-            await _tokenService.SetBearerTokenAsync();
-
-
-            var baseUrl =
-                ClarifyGoApiEndpoints.HistoricRecordings.Search(searchFiltersDto.StartDate, searchFiltersDto.EndDate);
-            Console.WriteLine($"Base URL: {baseUrl}");
-
-            var queryParams = BuildQueryParameters(searchFiltersDto);
-            var fullUrl = queryParams.Any()
-                ? $"{baseUrl}?{string.Join("&", queryParams)}"
-                : baseUrl;
-
-            Console.WriteLine($"Full URL: {fullUrl}");
-
-            var response = await _httpClient.GetAsync(fullUrl);
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            try
             {
-                throw new SecurityTokenExpiredException("Access token has expired");
+                await _tokenService.SetBearerTokenAsync(_httpClient);
+
+                // Get base URL without query parameters
+                var baseUrl = ClarifyGoApiEndpoints.HistoricRecordings.Search(
+                    searchFiltersDto.StartDate,
+                    searchFiltersDto.EndDate);
+
+                var queryParams = BuildQueryParameters(searchFiltersDto);
+
+                // Always use ? for the first parameter
+                var fullUrl = queryParams.Any()
+                    ? $"{baseUrl}?{string.Join("&", queryParams)}"
+                    : baseUrl;
+
+
+                var response = await _httpClient.GetAsync(fullUrl);
+
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    throw new ServiceException("Unauthorized access to recording service", 401);
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    throw new ServiceException($"Recording service error: {error}", (int)response.StatusCode);
+                }
+
+                var searchResultsObj = await response.Content.ReadFromJsonAsync<HistoricRecordingSearchResults>();
+                return searchResultsObj?.SearchResults ?? new List<HistoricRecordingSearchResult>();
             }
-
-            response.EnsureSuccessStatusCode();
-
-            // Deserialize into a RecordingSearchResults object.
-            var searchResultsObj = await response.Content.ReadFromJsonAsync<RecordingSearchResults>();
-
-            // Return the list of individual search results, or an empty list if null.
-            return searchResultsObj?.SearchResults ?? new List<RecordingSearchResult>();
+            catch (HttpRequestException ex)
+            {
+                throw new ServiceException($"Network error: {ex.Message}", 503);
+            }
+            catch (JsonException ex)
+            {
+                throw new ServiceException($"Invalid response format: {ex.Message}", 502);
+            }
+            catch (ServiceException)
+            {
+                throw; // Re-throw ServiceExceptions as they are already properly formatted
+            }
+            catch (Exception ex)
+            {
+                throw new ServiceException($"Unexpected error: {ex.Message}");
+            }
         }
 
-
-        public async Task DeleteRecordingAsync(string recordingId)
+        public async Task<bool> DeleteRecordingAsync(string recordingId)
         {
-            await _tokenService.SetBearerTokenAsync();
+            try
+            {
+                await _tokenService.SetBearerTokenAsync(_httpClient);
 
-            var url = ClarifyGoApiEndpoints.HistoricRecordings.Delete(recordingId);
+                var url = ClarifyGoApiEndpoints.HistoricRecordings.Delete(recordingId);
 
-            var response = await _httpClient.DeleteAsync(url);
-            response.EnsureSuccessStatusCode();
+                var response = await _httpClient.DeleteAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return true;
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    return false;
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    throw new HttpRequestException($"Failed to delete recording. Status code: {response.StatusCode}. Error: {error}");
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new ServiceException($"Network error: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                throw new ServiceException($"Unexpected error: {ex.Message}");
+            }
         }
 
         public async Task<Stream> ExportMp3Async(string recordingId)
         {
-            await _tokenService.SetBearerTokenAsync();
+            await _tokenService.SetBearerTokenAsync(_httpClient);
 
             var url = ClarifyGoApiEndpoints.HistoricRecordings.ExportMp3(recordingId);
 
@@ -166,7 +221,7 @@ namespace backend.Services.ClarifyGoServices.HistoricRecordings
 
         public async Task<Stream> ExportWavAsync(string recordingId)
         {
-            await _tokenService.SetBearerTokenAsync();
+            await _tokenService.SetBearerTokenAsync(_httpClient);
 
             var url = ClarifyGoApiEndpoints.HistoricRecordings.ExportWav(recordingId);
 
