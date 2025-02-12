@@ -50,6 +50,15 @@ steps:
      # 10. Push to GitHub with force to ensure updates
     git push origin dev --force
 
+    // Checkout to prod
+    git checkout -b prod origin/prod
+
+    // Auto-merge
+    git merge --no-ff dev -m "Auto-merge: dev → prod [skip ci]"
+    
+    # Push changes
+    git push origin prod
+
     # 11. Cleanup
     git branch -D backend-split
     git branch -D temp-working-branch
