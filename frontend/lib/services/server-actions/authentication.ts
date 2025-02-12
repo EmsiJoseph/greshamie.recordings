@@ -1,17 +1,15 @@
 "use server";
 
 import { AxiosResponse } from "axios";
-import { ILoginApiResponse } from "@/lib/interfaces/authentication-interfaces";
 import { flattenValidationErrors } from "next-safe-action";
 import { GreshamAxiosConfig } from "@/lib/config/main-backend-axios-config";
-import { loginEndpoint } from "@/api/endpoints/auth-endpoints";
+import { loginEndpoint, logoutEndpoint, reauthenticateEndpoint } from "@/api/endpoints/auth-endpoints";
 import { LoginSchema } from "@/lib/schema/authentication-schema";
-import { cookies } from "next/headers";
 import { actionClient } from "@/lib/config/safe-action";
-import { setAuthCookie } from "./cookie";
+import { deleteAuthCookie, getAccessToken, getRefreshToken, setAuthCookie } from "./cookie";
 import { handleUseServerResponse } from "@/lib/handlers/api-response-handlers/handle-use-server-response";
-// import { loginUserUseCase } from "@/core/use-cases/users";
-// import { loginRoute } from "@/config/api/backend-routes/auth-routes";
+import { IUserWithToken } from "@/lib/interfaces/user-interfaces";
+import { parseISO } from 'date-fns';
 
 // TODO: Implement zsa
 /**
@@ -30,20 +28,11 @@ export const loginUserAction = actionClient
             flattenValidationErrors(ve).fieldErrors,
     })
     .action(
-        async ({
-            parsedInput: { email, password },
-        }) => {
-            const request = async (): Promise<
-                AxiosResponse<ILoginApiResponse>> => {
-                let requestBody: { email: string; password: string} = {
-                    email,
-                    password,
-                };
+        async ({ parsedInput: { username, password } }) => {
+            const request = async (): Promise<AxiosResponse<IUserWithToken>> => {
+                let requestBody = { username, password };
 
-                return GreshamAxiosConfig.post<ILoginApiResponse>(
-                    loginEndpoint,
-                    requestBody
-                );
+                return GreshamAxiosConfig.post<IUserWithToken>(loginEndpoint, requestBody);
             };
 
             // Handle the response
@@ -51,30 +40,94 @@ export const loginUserAction = actionClient
                 request,
                 successMessage: "Logged in successfully! 🎉",
             });
-            // if (response?.data?.status) {
-            //     const isSetSuccessfully = await setAuthCookie(response?.data);
-            //     if (!isSetSuccessfully) {
-            //         throw new Error("Failed to set auth cookie");
-            //     }
-            // }
 
+            if (response?.data?.accessToken) {
+                // console.log("AUTHENTICATION RES.DATA", response.data)
+                const isSetSuccessfully = await setAuthCookie(response?.data);
+                if (!isSetSuccessfully) {
+                    throw new Error("Failed to set auth cookie");
+                }
+            }
             return response;
         }
     );
 
-export const logoutUserAction = actionClient.action(async () => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const allCookies = await cookies();
-            const cookiesToDelete = allCookies.getAll();
-            cookiesToDelete.forEach((cookie) => {
-                allCookies.delete(cookie.name);
-            });
-            setTimeout(() => {
-                resolve(!allCookies.has("auth"));
-            }, 100);
-        } catch (error) {
-            reject(error);
-        }
-    });
+export const logoutUserAction = actionClient.action(async (): Promise<boolean> => {
+    const response = await GreshamAxiosConfig.post(logoutEndpoint);
+    if (response.status === 200) {
+        await deleteAuthCookie();
+        return true
+    }
+
+    return false;
+
 });
+
+export const reauthenticate = async (): Promise<boolean> => {
+    try {
+        const refreshToken = await getRefreshToken();
+        if (!refreshToken?.value) {
+            return false;
+        }
+
+        const response = await GreshamAxiosConfig.post(reauthenticateEndpoint,
+            { RefreshToken: refreshToken.value },  // Request body
+        );
+        // console.log("reauthenticate, ", response.data)
+
+
+        if (response?.status !== 200) {
+            return false;
+        }
+
+        const isSetSuccessfully = await setAuthCookie(response?.data);
+        if (!isSetSuccessfully) {
+            return false;
+        }
+
+        return true;
+    }
+    catch (e) {
+        console.log("Reauth Catch", e)
+        return false;
+    }
+}
+
+
+export const hasValidAccessToken = async (): Promise<Boolean> => {
+    const accessToken = await getAccessToken();
+
+    if (accessToken && accessToken.expiresAt) {
+        const utcDate = parseISO(accessToken.expiresAt)
+
+        if (utcDate <= new Date()) {
+            return false
+        }
+
+        // Has Valid Token
+        return true;
+    }
+
+    // No Token found
+    return false;
+}
+
+
+
+export const hasValidRefreshToken = async (): Promise<Boolean> => {
+    const refreshToken = await getRefreshToken();
+
+    if (refreshToken && refreshToken.expiresAt) {
+        const utcDate = parseISO(refreshToken.expiresAt)
+
+        if (utcDate <= new Date()) {
+            return false
+        }
+
+        // Has Valid Token
+        return true;
+    }
+
+    // No Token found
+    return false;
+} 

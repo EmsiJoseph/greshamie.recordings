@@ -1,31 +1,53 @@
-import { CallTypes } from "@/constants/call-types"
+import { CallDirections } from "@/constants/call-types"
 
-export type TCallType = typeof CallTypes[keyof typeof CallTypes]
+export type TCallDirections = typeof CallDirections[keyof typeof CallDirections]
 
 export interface ICall {
-    id: number,
-    date: Date,
+    id: string | number,
     caller: string,
     receiver: string,
-    callType: TCallType,
-    duration: number, 
-    recorder: string, 
-    minSize: number // in kilobytes
-    maxSize: number 
+    startDateTime: Date,
+    endDateTime: Date,
+    callType: TCallDirections,
+    isLive: boolean,
+    durationSeconds: number, // Seconds
+    recorder: string,
+    StreamingUrl: string,
+    DownloadUrl: string,
 }
 
 export interface ICallFilters {
     search?: string,
-    callTypes?: TCallType[],
-    startDate?: Date,
-    endDate?: Date,
-    minDuration?: number,
-    maxDuration?: number,
+    callDirection?: TCallDirections,
+    startDate?: Date, // UTC Str
+    endDate?: Date, // UTC Str
+    minimumDurationSeconds?: number,
+    maximumDurationSeconds?: number,
     caller?: string,
     receiver?: string,
     recorder?: string,
     hasVideoRecording?: boolean,
     hasPciCompliance?: boolean,
     hasQualityEvaluation?: boolean,
-    page?: number
+}
+
+export interface ICallLogs {
+    hasNext?: boolean,
+    hasPrevious?: boolean,
+    items: ICall[] | [],
+    pageSize?: number
+    pageOffset?: number
+    totalCount?: number,
+    totalPages?: number
+    StreamingUrl: string,
+}
+
+export interface ICallAdvanceFilterComponent {
+    startDate?: Date, // UTC Str
+    endDate?: Date, // UTC Str
+    minimumDurationSeconds?: number,
+    maximumDurationSeconds?: number,
+    hasVideoRecording?: boolean,
+    hasPciCompliance?: boolean,
+    hasQualityEvaluation?: boolean,
 }
