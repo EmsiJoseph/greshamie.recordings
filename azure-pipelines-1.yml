@@ -2,13 +2,25 @@ trigger:
   branches:
     include:
       - backend-main
+      - frontend-main
 
 variables:
+  # Common variables
   GITHUB_USERNAME: 'EmsiJoseph'
-  GITHUB_REPO: 'greshamie.recordings.backend'
-  DEV_BRANCH: 'dev'
-  PROD_BRANCH: 'prod'
-  TARGET: 'backend'
+  
+  # Backend-specific variables
+  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/backend-main') }}:
+    GITHUB_REPO: 'greshamie.recordings.backend'
+    DEV_BRANCH: 'dev'
+    PROD_BRANCH: 'prod'
+    TARGET: 'backend'
+  
+  # Frontend-specific variables
+  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/frontend-main') }}:
+    GITHUB_REPO: 'greshamie.recordings.frontend'
+    DEV_BRANCH: 'dev'
+    PROD_BRANCH: 'prod'
+    TARGET: 'frontend'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -18,6 +30,16 @@ steps:
 
 - script: |
     set -euxo pipefail
+
+    # Determine which branch triggered the pipeline
+    TRIGGER_BRANCH=$(echo "$(Build.SourceBranch)" | sed 's/refs\/heads\///')
+    echo "Pipeline triggered by: $TRIGGER_BRANCH"
+
+    # Only proceed if the variables match the triggered branch
+    if [[ "$TRIGGER_BRANCH" != *"$TARGET"* ]]; then
+      echo "Skipping pipeline as trigger branch doesn't match target"
+      exit 0
+    fi
 
     # 1. Clone the GitHub repository
     git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
@@ -50,7 +72,7 @@ steps:
         git checkout -b $DEV_BRANCH $TARGET-split
     fi
 
-     # 10. Push to GitHub with force to ensure updates
+    # 10. Push to GitHub with force to ensure updates
     git push origin $DEV_BRANCH --force
 
     # Checkout to prod
