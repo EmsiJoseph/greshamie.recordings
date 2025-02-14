@@ -1,28 +1,69 @@
 trigger:
   branches:
     include:
-      - backend-main
+      - frontend-main
+
+variables:
+  GITHUB_USERNAME: 'EmsiJoseph'
+  GITHUB_REPO: 'greshamie.recordings.frontend'
+  DEV_BRANCH: 'main'
+  PROD_BRANCH: 'prod'
+  TARGET: 'frontend'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- checkout: self
+- checkout: none
 
 - script: |
-    # Exit immediately on any error, print each command, and treat unset variables as errors.
     set -euxo pipefail
 
-    echo "Repository URL: $(Build.Repository.Uri)"
+    # 1. Clone the GitHub repository
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    cd $GITHUB_REPO
 
-    # 1. Add the current repository as a remote called 'azure'.
-    #    This simulates adding your Azure DevOps repo as a remote.
+    # 2. Configure Git identity
+    git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config user.name "Azure DevOps"
+
+    # 4. Add Azure DevOps remote
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
-    
-    # 2. Fetch the backend-main branch from the 'azure' remote.
-    git fetch azure backend-main
 
-    # 3. List the directories at the root of the backend-main branch.
-    echo "Listing directories in azure/backend-main:"
-    git ls-tree -d azure/backend-main
-  displayName: 'Test: List Directories from azure/backend-main'
+    # 5. Fetch and checkout the Azure $TARGET-main branch
+    git fetch azure $TARGET-main
+    git checkout azure/$TARGET-main
+
+    # 6. Create and checkout a temporary branch
+    git checkout -b temp-working-branch
+
+    # 7. Perform the subtree split
+    git subtree split --prefix=$TARGET -b $TARGET-split
+
+    # 8. Check if $DEV_BRANCH branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/$DEV_BRANCH; then
+        # Main exists - checkout and reset to backend-split
+        git checkout $DEV_BRANCH
+        git reset --hard $DEV_BRANCH-split
+    else
+        # Dev doesn't exist - create it from backend-split
+        git checkout -b $DEV_BRANCH $DEV_BRANCH-split
+    fi
+
+     # 10. Push to GitHub with force to ensure updates
+    git push origin $DEV_BRANCH --force
+
+    # Checkout to prod
+    git checkout -b $PROD_BRANCH origin/$PROD_BRANCH
+
+    # Auto-merge
+    git merge --no-ff $DEV_BRANCH -m "Auto-merge"
+    
+    # Push changes
+    git push origin $PROD_BRANCH
+
+    # 11. Cleanup
+    git branch -D $TARGET-split
+    git branch -D temp-working-branch
+  env:
+    GITHUB_PAT: $(GITHUB_PAT)
