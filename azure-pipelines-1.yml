@@ -42,12 +42,12 @@ steps:
 
     # 8. Check if $DEV_BRANCH branch exists and handle accordingly
     if git show-ref --verify --quiet refs/heads/$DEV_BRANCH; then
-        # Main exists - checkout and reset to backend-split
+        # Main exists - checkout and reset to $TARGET-split
         git checkout $DEV_BRANCH
-        git reset --hard $DEV_BRANCH-split
+        git reset --hard $TARGET-split
     else
-        # Dev doesn't exist - create it from backend-split
-        git checkout -b $DEV_BRANCH $DEV_BRANCH-split
+        # Dev doesn't exist - create it from $TARGET-split
+        git checkout -b $DEV_BRANCH $TARGET-split
     fi
 
      # 10. Push to GitHub with force to ensure updates
