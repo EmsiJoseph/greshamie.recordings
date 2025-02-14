@@ -5,7 +5,7 @@ trigger:
 
 variables:
   GITHUB_USERNAME: 'EmsiJoseph'
-  GITHUB_REPO: 'greshamie.recordings'
+  GITHUB_REPO: 'gresham.recordings'
   DEV_BRANCH: 'dev'
   PROD_BRANCH: 'prod'
 
