@@ -1,47 +1,92 @@
 trigger:
   branches:
     include:
-      - main
+      - backend-main
+      - frontend-main
 
 variables:
+  # Common variables
   GITHUB_USERNAME: 'EmsiJoseph'
-  GITHUB_REPO: 'gresham.recordings'
-  DEV_BRANCH: 'dev'
-  PROD_BRANCH: 'prod'
+  
+  # Backend-specific variables
+  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/backend-main') }}:
+    GITHUB_REPO: 'greshamie.recordings.backend'
+    DEV_BRANCH: 'dev'
+    PROD_BRANCH: 'prod'
+    TARGET: 'backend'
+  
+  # Frontend-specific variables
+  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/frontend-main') }}:
+    GITHUB_REPO: 'greshamie.recordings.frontend'
+    DEV_BRANCH: 'dev'
+    PROD_BRANCH: 'prod'
+    TARGET: 'frontend'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- checkout: self
-  persistCredentials: true
+- checkout: none
 
 - script: |
-    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git 
-    
+    set -euxo pipefail
+
+    # Determine which branch triggered the pipeline
+    TRIGGER_BRANCH=$(echo "$(Build.SourceBranch)" | sed 's/refs\/heads\///')
+    echo "Pipeline triggered by: $TRIGGER_BRANCH"
+
+    # Only proceed if the variables match the triggered branch
+    if [[ "$TRIGGER_BRANCH" != *"$TARGET"* ]]; then
+      echo "Skipping pipeline as trigger branch doesn't match target"
+      exit 0
+    fi
+
+    # 1. Clone the GitHub repository
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
     cd $GITHUB_REPO
 
-    # Configure Git identity
-    git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
-    git config --global user.name "Azure DevOps"
+    # 2. Configure Git identity
+    git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config user.name "Azure DevOps"
 
+    # 4. Add Azure DevOps remote
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
-    git fetch azure main 
 
-    # Push main to dev branch
-    git checkout -B $(DEV_BRANCH) azure/main
-    git push origin $(DEV_BRANCH) --force
+    # 5. Fetch and checkout the Azure $TARGET-main branch
+    git fetch azure $TARGET-main
+    git checkout azure/$TARGET-main
 
-    # Merge dev into prod
-    git fetch origin $(PROD_BRANCH)
-    if git show-ref --verify --quiet refs/remotes/origin/$(PROD_BRANCH); then
-      git checkout $(PROD_BRANCH)
-      git merge --no-ff origin/$(DEV_BRANCH) -m "Merge dev into prod"
+    # 6. Create and checkout a temporary branch
+    git checkout -b temp-working-branch
+
+    # 7. Perform the subtree split
+    git subtree split --prefix=$TARGET -b $TARGET-split
+
+    # 8. Check if $DEV_BRANCH branch exists and handle accordingly
+    if git show-ref --verify --quiet refs/heads/$DEV_BRANCH; then
+        # Main exists - checkout and reset to $TARGET-split
+        git checkout $DEV_BRANCH
+        git reset --hard $TARGET-split
     else
-      git checkout -b $(PROD_BRANCH)
-      git merge --no-ff origin/$(DEV_BRANCH) -m "Initial merge of dev into prod"
+        # Dev doesn't exist - create it from $TARGET-split
+        git checkout -b $DEV_BRANCH $TARGET-split
     fi
-    git push origin $(PROD_BRANCH)
-  displayName: 'Sync branches'
+
+    # 10. Push to GitHub with force to ensure updates
+    git push origin $DEV_BRANCH --force
+
+    # Checkout to prod
+    git fetch origin $PROD_BRANCH
+    git checkout $PROD_BRANCH
+
+    # Auto-merge
+    git merge --no-ff $DEV_BRANCH -m "Auto-merge"
+    
+    # Push changes
+    git push origin $PROD_BRANCH
+
+    # 11. Cleanup
+    git branch -D $TARGET-split
+    git branch -D temp-working-branch
   env:
     GITHUB_PAT: $(GITHUB_PAT)
