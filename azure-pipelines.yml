@@ -76,7 +76,7 @@ steps:
     git push origin $DEV_BRANCH --force
 
     # Checkout to prod
-    git checkout -b $PROD_BRANCH origin/$PROD_BRANCH
+    git checkout $PROD_BRANCH origin/$PROD_BRANCH
 
     # Auto-merge
     git merge --no-ff $DEV_BRANCH -m "Auto-merge"
