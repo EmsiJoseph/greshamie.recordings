@@ -17,15 +17,17 @@ steps:
   persistCredentials: true
 
 - script: |
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git cd $GITHUB_REPO
+
     # Configure Git identity
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config --global user.name "Azure DevOps"
 
-    # Fetch all branches
-    git fetch origin
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
+    git fetch azure main 
 
     # Push main to dev branch
-    git checkout -B $(DEV_BRANCH) origin/main
+    git checkout -B $(DEV_BRANCH) azure/main
     git push origin $(DEV_BRANCH) --force
 
     # Merge dev into prod
