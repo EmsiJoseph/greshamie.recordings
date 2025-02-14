@@ -75,10 +75,8 @@ steps:
     # 10. Push to GitHub with force to ensure updates
     git push origin $DEV_BRANCH --force
 
-    git fetch
-    
     # Checkout to prod
-    git checkout $PROD_BRANCH origin/$PROD_BRANCH
+    git checkout -b $PROD_BRANCH origin/$PROD_BRANCH
 
     # Auto-merge
     git merge --no-ff $DEV_BRANCH -m "Auto-merge"
