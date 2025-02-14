@@ -1,83 +1,100 @@
 using backend.Data.Models;
 using backend.Data.Seeds;
-using backend.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace backend.Data;
 
-public class ApplicationDbContext : IdentityDbContext<User, Role, string>
+public class ApplicationDbContext(
+    DbContextOptions<ApplicationDbContext> options,
+    IConfiguration configuration,
+    IWebHostEnvironment environment)
+    : IdentityDbContext<User, Role, string>(options)
 {
-    private readonly IConfiguration _configuration;
+    private readonly IConfiguration _configuration =
+        configuration ?? throw new ArgumentNullException(nameof(configuration));
 
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration configuration)
-        : base(options)
+    private readonly IWebHostEnvironment _environment =
+        environment ?? throw new ArgumentNullException(nameof(environment));
+
+
+    protected override void OnModelCreating(ModelBuilder builder)
     {
-        _configuration = configuration;
+        base.OnModelCreating(builder);
+
+        // These seeds will always run
+        builder.SeedAuditEvent();
+        builder.SeedCallType();
+        builder.SeedAuditEventType();
+
+        // Always configure the user role seed data, but don't check tables here
+        var adminUserName = _configuration["AdminCredentials:UserName"];
+        var adminPassword = _configuration["AdminCredentials:Password"];
+        builder.SeedUserRole(adminUserName, adminPassword);
+
+        // Entity configurations
+        builder.Entity<AuditEntry>()
+            .HasOne(ae => ae.Event)
+            .WithMany(e => e.AuditEntries)
+            .HasForeignKey(ae => ae.EventId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .IsRequired();
+
+        builder.Entity<AuditEntry>()
+            .HasOne(ae => ae.User)
+            .WithMany(u => u.AuditEntries)
+            .HasForeignKey(ae => ae.UserId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .IsRequired();
+
+        builder.Entity<AuditEntry>()
+            .HasOne(ae => ae.Recording)
+            .WithMany(r => r.AuditEntries)
+            .HasForeignKey(ae => ae.RecordId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+
+        builder.Entity<AuditEvent>()
+            .HasOne(ae => ae.Type)
+            .WithMany(et => et.Events)
+            .HasForeignKey(ae => ae.TypeId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .IsRequired();
     }
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    /// <summary>
+    /// Checks if identity tables are empty and needs seeding
+    /// </summary>
+    public bool NeedsIdentitySeeding()
     {
-        try
-        {
-            base.OnModelCreating(modelBuilder);
-
-            // Get database creator
-            var databaseCreator = Database.GetService<IRelationalDatabaseCreator>();
-
-            // Check if tables exist
-            var hasIdentityTables = databaseCreator.TableExists("AspNetUsers") && 
-                                  databaseCreator.TableExists("AspNetRoles");
-            var hasAuditTables = databaseCreator.TableExists("AuditEvents") && 
-                                databaseCreator.TableExists("AuditEntries");
-            var hasCallTypesTable = databaseCreator.TableExists("CallTypes");
-
-            // Only seed data for tables that don't exist
-            if (!hasAuditTables)
-            {
-                AuditEventSeeder.Seed(modelBuilder);
-            }
-
-            if (!hasCallTypesTable)
-            {
-                CallTypeSeeder.Seed(modelBuilder);
-            }
-
-            if (!hasIdentityTables)
-            {
-                var adminUserName = _configuration["AdminCredentials:UserName"];
-                var adminPassword = _configuration["AdminCredentials:Password"];
-
-                if (string.IsNullOrEmpty(adminUserName) || string.IsNullOrEmpty(adminPassword))
-                {
-                    throw new InvalidOperationException("Admin credentials not found in configuration.");
-                }
-
-                UserRoleSeeder.Seed(modelBuilder, adminUserName, adminPassword);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Log the error but allow the migration to continue
-            Console.WriteLine($"Error in OnModelCreating: {ex.Message}");
-        }
+        return !Users.Any() && !Roles.Any() && !Set<IdentityUserRole<string>>().Any();
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
 
-        // Suppress the warning about model changes
+        // Only enable sensitive data logging in development
+        if (_environment.IsDevelopment())
+        {
+            optionsBuilder
+                .EnableSensitiveDataLogging()
+                .EnableDetailedErrors();
+        }
+
         optionsBuilder.ConfigureWarnings(warnings =>
-            warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+        {
+            warnings.Ignore(RelationalEventId.PendingModelChangesWarning);
+            warnings.Ignore(CoreEventId.DuplicateDependentEntityTypeInstanceWarning);
+        });
     }
 
     public DbSet<AuditEntry> AuditEntries { get; set; }
     public DbSet<AuditEvent> AuditEvents { get; set; }
     public DbSet<CallType> CallTypes { get; set; }
     public DbSet<SyncedRecording> SyncedRecordings { get; set; }
+
+    public DbSet<AuditEventType> AuditEventTypes { get; set; }
 }

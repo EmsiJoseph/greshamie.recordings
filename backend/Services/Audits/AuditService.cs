@@ -1,148 +1,153 @@
 ﻿using backend.Data;
 using backend.Data.Models;
-using backend.Exceptions;
 using backend.DTOs;
+using backend.Exceptions;
+using backend.DTOs.Audit;
 using Microsoft.EntityFrameworkCore;
 
-namespace backend.Services.Audits
+namespace backend.Services.Audits;
+
+public class AuditService(ApplicationDbContext context, ILogger<AuditService> logger) : IAuditService
 {
-    public class AuditService : IAuditService
+    private readonly ApplicationDbContext _context = context ?? throw new ArgumentNullException(nameof(context));
+    private readonly ILogger<AuditService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+    public async Task LogAuditEntryAsync(AuditEntry entry)
     {
-        private readonly ApplicationDbContext _context;
-
-        public AuditService(ApplicationDbContext context)
+        try
         {
-            _context = context ?? throw new ArgumentNullException(nameof(context));
-        }
-
-        public async Task LogAuditEntryAsync(string userId, int eventId, string? details = null)
-        {
-            try
+            if (string.IsNullOrWhiteSpace(entry.UserId))
             {
-                if (string.IsNullOrWhiteSpace(userId))
-                {
-                    throw new ArgumentException("User ID cannot be null or empty.", nameof(userId));
-                }
-
-                var auditEntry = new AuditEntry
-                {
-                    UserId = userId,
-                    EventId = eventId,
-                    Timestamp = DateTime.UtcNow,
-                    Details = details
-                };
-
-                await _context.AuditEntries.AddAsync(auditEntry);
-                await _context.SaveChangesAsync();
+                throw new ArgumentException("User ID cannot be null or empty.", nameof(entry.UserId));
             }
-            catch (DbUpdateException ex)
+
+            // Validate user exists
+            var user = await _context.Users.FindAsync(entry.UserId);
+            if (user == null)
             {
-                throw new ServiceException("Failed to save audit entry to database", 500);
+                throw new ServiceException($"User with ID {entry.UserId} not found", 404);
             }
-            catch (Exception ex)
+
+            // Validate event exists
+            var auditEvent = await _context.AuditEvents.FindAsync(entry.EventId);
+            if (auditEvent == null)
             {
-                throw new ServiceException($"Unexpected error logging audit entry: {ex.Message}", 500);
+                throw new ServiceException($"Audit event with ID {entry.EventId} not found", 404);
+            }
+
+            _context.AuditEntries.Add(entry);
+
+            // Enable change tracking explicitly
+            _context.ChangeTracker.DetectChanges();
+
+            var changes = await _context.SaveChangesAsync();
+
+            if (changes == 0)
+            {
+                throw new ServiceException("No changes were saved to the database");
             }
         }
-
-        public async Task<List<AuditEntryDto>> GetAuditEntriesAsync()
+        catch (DbUpdateException ex)
         {
-            try
-            {
-                var entries = await _context.AuditEntries
-                    .Include(ae => ae.User)
-                    .Include(ae => ae.Event)
-                    .ToListAsync();
-                return entries.Select(ae => new AuditEntryDto
-                {
-                    Id = ae.Id,
-                    Username = ae.User.UserName,
-                    EventName = ae.Event.Name,
-                    Timestamp = ae.Timestamp,
-                    Details = ae.Details,
-                }).ToList();
-            }
-            catch (Exception ex)
-            {
-                throw new ServiceException($"Failed to retrieve audit entries: {ex.Message}", 500);
-            }
+            throw new ServiceException($"Failed to save audit entry: {ex.InnerException?.Message ?? ex.Message}");
         }
+    }
 
-        public async Task<AuditEntryDto> GetAuditEntryByIdAsync(int id)
+
+    public async Task<PagedResponseDto<AuditResponseDto>> GetAuditEntriesAsync(AuditRequestDto dto)
+    {
+        try
         {
-            try
-            {
-                var entry = await _context.AuditEntries
-                    .Include(ae => ae.User)
-                    .Include(ae => ae.Event)
-                    .FirstOrDefaultAsync(ae => ae.Id == id);
+            _logger.LogInformation("Fetching audit entries from database with pagination");
 
-                if (entry == null)
+            var query = _context.AuditEntries
+                .Include(x => x.Event.Type)
+                .Include(x => x.User)
+                .AsQueryable();
+
+            // Apply event type filter
+            if (!string.IsNullOrWhiteSpace(dto.EventType))
+            {
+                query = dto.EventType.ToUpperInvariant() == "ALL"
+                    ? query.Where(x => true)
+                    : query.Where(x => EF.Functions.Like(x.Event.Type.Name, dto.EventType));
+            }
+
+            // Apply date range filter with proper time boundaries
+            if (dto.StartDate.HasValue || dto.EndDate.HasValue)
+            {
+                var startDate = dto.StartDate?.Date ?? DateTime.MinValue;
+                var endDate = dto.EndDate?.Date.AddDays(1).AddTicks(-1) ?? DateTime.MaxValue;
+
+                // Ensure start date is not after end date
+                if (startDate > endDate)
                 {
-                    throw new ServiceException($"Audit entry with ID {id} not found.");
+                    throw new ServiceException("Start date cannot be after end date");
                 }
 
-                return new AuditEntryDto
-                {
-                    Id = entry.Id,
-                    Username = entry.User.UserName,
-                    EventName = entry.Event.Name,
-                    Timestamp = entry.Timestamp,
-                    Details = entry.Details,
-                };
+                query = query.Where(x => x.Timestamp >= startDate && x.Timestamp <= endDate);
+                
+                _logger.LogInformation(
+                    "Applying date filter: Start={StartDate:yyyy-MM-dd HH:mm:ss}, End={EndDate:yyyy-MM-dd HH:mm:ss}", 
+                    startDate, 
+                    endDate);
             }
-            catch (Exception ex)
+
+            // Apply search filter
+            if (!string.IsNullOrWhiteSpace(dto.Search))
             {
-                throw new ServiceException($"Failed to retrieve audit entry: {ex.Message}", 500);
+                query = query.Where(x =>
+                    (x.User.UserName != null && EF.Functions.Like(x.User.UserName, $"%{dto.Search}%")) ||
+                    EF.Functions.Like(x.Event.Name, $"%{dto.Search}%") ||
+                    EF.Functions.Like(x.Event.Type.Name, $"%{dto.Search}%") ||
+                    (x.Details != null && EF.Functions.Like(x.Details, $"%{dto.Search}%")) ||
+                    (x.RecordId != null && EF.Functions.Like(x.RecordId, $"%{dto.Search}%"))
+                );
             }
+
+            // Get total count before applying pagination
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)dto.PageSize);
+
+            // Apply ordering and pagination
+            var entriesInPage = await query
+                .OrderByDescending(x => x.Timestamp)
+                .Skip(dto.PageOffSet * dto.PageSize)
+                .Take(dto.PageSize)
+                .Select(audit => new AuditResponseDto
+                {
+                    Id = audit.Id,
+                    UserName = audit.User.UserName ?? "Unknown",
+                    RecordingId = audit.RecordId ?? "N/A",
+                    EventName = audit.Event.Name,
+                    EventType = audit.Event.Type.Name,
+                    Details = audit.Details ?? "No details",
+                    Timestamp = audit.Timestamp
+                })
+                .ToListAsync();
+
+            // Convert to uppercase after data is retrieved
+            foreach (var entry in entriesInPage)
+            {
+                entry.EventName = entry.EventName?.ToUpperInvariant();
+                entry.EventType = entry.EventType?.ToUpperInvariant();
+            }
+
+            return new PagedResponseDto<AuditResponseDto>
+            {
+                Items = entriesInPage,
+                PageOffSet = dto.PageOffSet,
+                PageSize = dto.PageSize,
+                TotalPages = totalPages,
+                TotalCount = totalCount,
+                HasNext = (dto.PageOffSet + 1) * dto.PageSize < totalCount,
+                HasPrevious = dto.PageOffSet > 0
+            };
         }
-
-        public async Task<List<AuditEntryDto>> GetAuditEntriesFilteredAsync(
-            int? eventType = null,
-            string? userId = null,
-            DateTime? startDate = null,
-            DateTime? endDate = null)
+        catch (Exception ex)
         {
-            try
-            {
-                var entries = _context.AuditEntries
-                    .Include(ae => ae.User)
-                    .Include(ae => ae.Event)
-                    .AsQueryable();
-
-                if (eventType.HasValue)
-                {
-                    entries = entries.Where(ae => ae.EventId == eventType.Value);
-                }
-
-                if (!string.IsNullOrWhiteSpace(userId))
-                {
-                    entries = entries.Where(ae => ae.UserId == userId);
-                }
-
-                if (startDate.HasValue)
-                {
-                    entries = entries.Where(ae => ae.Timestamp >= startDate.Value);
-                }
-
-                if (endDate.HasValue)
-                {
-                    entries = entries.Where(ae => ae.Timestamp <= endDate.Value);
-                }
-
-                return await entries.Select(ae => new AuditEntryDto
-                {
-                    Id = ae.Id,
-                    Username = ae.User.UserName,
-                    EventName = ae.Event.Name,
-                    Timestamp = ae.Timestamp,
-                    Details = ae.Details,
-                }).ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                throw new ServiceException($"Failed to retrieve audit entries: {ex.Message}", 500);
-            }
+            _logger.LogError(ex, "Error retrieving audit entries from database");
+            throw new ServiceException("Failed to retrieve audit entries");
         }
     }
 }

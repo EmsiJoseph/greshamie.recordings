@@ -1,6 +1,10 @@
 using System.Text;
+using System.Text.Json;
+using Asp.Versioning;
+using backend.Constants;
 using backend.Data;
 using backend.Data.Models;
+using backend.Extensions;
 using backend.Middleware;
 using backend.Services.Audits;
 using backend.Services.Auth;
@@ -12,9 +16,11 @@ using backend.Services.Storage;
 using backend.Services.Sync;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -56,28 +62,58 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+        // Use camelCase for all property names by default
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.WriteIndented = true;
     });
 
-var connection = String.Empty;
+// Add API versioning
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(ApiVersionConstants.MajorVersion, ApiVersionConstants.MinorVersion);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true;
+    options.ApiVersionReader = ApiVersionReader.Combine(
+        new UrlSegmentApiVersionReader(),
+        new HeaderApiVersionReader(ApiVersionConstants.HeaderName),
+        new QueryStringApiVersionReader(ApiVersionConstants.QueryStringParam)
+    );
+});
+
+builder.Services.AddEndpointsApiExplorer();
+
+string connection;
 
 if (builder.Environment.IsDevelopment())
 
 {
-    connection = builder.Configuration.GetConnectionString("DefaultConnection") ??
+    connection = builder.Configuration.GetConnectionString("LocalDefaultConnection") ??
                  throw new InvalidOperationException(
                      "Connection string 'DefaultConnection' not found.");
 }
 else
 {
-    connection = configuration["ConnectionStrings:DefaultConnection"];
+    connection = configuration["ConnectionStrings:DefaultConnection"] ??
+                 throw new InvalidOperationException(
+                     "Connection string 'DefaultConnection' not found.");
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connection));
+{
+    options.UseSqlServer(connection);
 
-builder.Services.AddIdentityCore<User>(options => { })
+    // Move sensitive data logging configuration here and make it conditional
+    if (builder.Environment.IsDevelopment())
+    {
+        options.EnableSensitiveDataLogging()
+            .EnableDetailedErrors();
+    }
+});
+
+builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+
+
+builder.Services.AddIdentityCore<User>()
     .AddRoles<Role>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
@@ -102,6 +138,12 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 
 // 2.6 Audit Service
 builder.Services.AddScoped<IAuditService, AuditService>();
+
+// 2.7. Sync Service
+builder.Services.AddScoped<ISyncService, SyncService>();
+
+// 2.8. Storage Service
+builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 
 
 // 3. HTTP Client Configurations
@@ -131,34 +173,80 @@ builder.Services.AddHttpClient<ICommentsService, CommentsService>(client =>
     client.BaseAddress = new Uri(apiBaseUri);
 });
 
-builder.Services.AddHttpClient<ISyncService, SyncService>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUri);
-});
-
 builder.Services.AddHttpClient<ITagsService, TagsService>(client => { client.BaseAddress = new Uri(apiBaseUri); });
 
+
+var clientApp = configuration["ClientApp:Uri"]
+                ?? String.Empty;
 // 4. Security Configuration
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("ReactClient", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("https://localhost:3000")
+        policy.WithOrigins("http://localhost:3000", "http://localhost:3001", "http://localhost:5136", clientApp)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
     });
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Worker", policy =>
+    {
+        policy.WithOrigins("https://autosyncworker.azurewebsites.net")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+builder.Services.AddReverseProxy()
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
 var app = builder.Build();
 
 // 5. Middleware Pipeline
 // app.UseHttpsRedirection();
-app.UseCors("ReactClient");
+if (app.Environment.IsDevelopment())
+{
+    app.UseMigrationsEndPoint();
+    app.ApplyMigrations();
+}
+else
+{
+    app.UseExceptionHandler("/Home/Error");
+    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    app.UseHsts();
+}
+
+app.UseCors("AllowFrontend");
+app.UseCors("Worker");
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseOutputCache();
 app.UseRateLimiter();
 app.UseMiddleware<GlobalExceptionHandler>();
 app.MapControllers();
+
+
+app.MapReverseProxy();
+
+// app.UseDefaultFiles();
+// app.UseStaticFiles(new StaticFileOptions
+// {
+//     ServeUnknownFileTypes = true,
+// });
+//
+// app.Use(async (context, next) =>
+// {
+//     if (context.Request.Path == "/")
+//     {
+//         context.Request.Path = "/index.html";
+//     }
+//
+//     await next();
+// });
+
+
 app.Run();

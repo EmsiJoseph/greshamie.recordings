@@ -1,42 +1,39 @@
-using System;
-using System.IO;
-using System.Text.Json;
-using System.Threading.Tasks;
-using backend.Classes;
+using backend.ClarifyGoClasses;
 using backend.DTOs;
+using backend.DTOs.Recording;
 
 namespace backend.Services.ClarifyGoServices.HistoricRecordings
 {
     public interface IHistoricRecordingsService
     {
         /// <summary>
-        /// Searches for historic recordings based on the specified date range and filter criteria.
+        /// Searches for recordings in ClarifyGo.
+        /// Returns a paginated list that can be filtered by various criteria.
         /// </summary>
-        /// <param name="startDate">The start date for the search period.</param>
-        /// <param name="endDate">The end date for the search period.</param>
-        /// <param name="searchFiltersDto">Optional frontend-friendly filter criteria.</param>
-        /// <returns>A <see cref="HistoricRecordingSearchResults"/> object containing the search results.</returns>
-        Task<IEnumerable<HistoricRecordingSearchResult>> SearchRecordingsAsync(
+        Task<PagedResponseDto<HistoricRecordingRaw>> SearchRecordingsAsync(
             RecordingSearchFiltersDto searchFiltersDto);
 
         /// <summary>
-        /// Deletes a recording specified by its ID.
+        /// Permanently deletes a recording from ClarifyGo.
+        /// This action cannot be undone.
         /// </summary>
         Task<bool> DeleteRecordingAsync(string recordingId);
 
         /// <summary>
-        /// Exports the specified recording as an MP3.
-        /// Player Command
+        /// Downloads a recording as an MP3 file.
+        /// Best for general playback and sharing.
         /// </summary>
         Task<Stream> ExportMp3Async(string recordingId);
 
         /// <summary>
-        /// Exports the specified recording as a WAV.
+        /// Downloads a recording as a WAV file.
+        /// Best for high quality audio analysis.
         /// </summary>
         Task<Stream> ExportWavAsync(string recordingId);
 
         /// <summary>
-        /// Sets the bearer token for authentication.
+        /// Updates the authentication token for ClarifyGo API calls.
+        /// Call this when getting new credentials.
         /// </summary>
         void SetBearerToken(string token);
     }

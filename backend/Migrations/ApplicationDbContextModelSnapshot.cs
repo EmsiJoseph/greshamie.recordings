@@ -111,8 +111,8 @@ namespace backend.Migrations
                     b.HasData(
                         new
                         {
-                            UserId = "81437d01-53a2-45a1-933d-a10a18897440",
-                            RoleId = "329e6542-ab1f-46ef-a00b-c8c0ca84d454"
+                            UserId = "1",
+                            RoleId = "1"
                         });
                 });
 
@@ -151,7 +151,6 @@ namespace backend.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("RecordId")
-                        .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("Timestamp")
@@ -190,7 +189,12 @@ namespace backend.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<int>("TypeId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TypeId");
 
                     b.ToTable("AuditEvents");
 
@@ -199,31 +203,101 @@ namespace backend.Migrations
                         {
                             Id = 1,
                             Description = "A user successfully logged in.",
-                            Name = "UserLoggedIn"
+                            Name = "UserLoggedIn",
+                            TypeId = 1
                         },
                         new
                         {
                             Id = 2,
                             Description = "A user logged out.",
-                            Name = "UserLoggedOut"
+                            Name = "UserLoggedOut",
+                            TypeId = 1
                         },
                         new
                         {
                             Id = 3,
                             Description = "A new record was played.",
-                            Name = "RecordPlayed"
+                            Name = "RecordPlayed",
+                            TypeId = 2
                         },
                         new
                         {
                             Id = 4,
                             Description = "An existing record was exported.",
-                            Name = "RecordExported"
+                            Name = "RecordExported",
+                            TypeId = 2
                         },
                         new
                         {
                             Id = 5,
                             Description = "A record was deleted.",
-                            Name = "RecordDeleted"
+                            Name = "RecordDeleted",
+                            TypeId = 2
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Description = "A token was refreshed. The old token is now invalid.",
+                            Name = "TokenRefreshed",
+                            TypeId = 1
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Description = "A manual sync was performed.",
+                            Name = "ManualSync",
+                            TypeId = 2
+                        },
+                        new
+                        {
+                            Id = 8,
+                            Description = "An auto sync was performed.",
+                            Name = "AutoSync",
+                            TypeId = 2
+                        });
+                });
+
+            modelBuilder.Entity("backend.Data.Models.AuditEventType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AuditEventTypes");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 2,
+                            Description = "Events related to call recordings.",
+                            Name = "Recording",
+                            NormalizedName = "RECORDING"
+                        },
+                        new
+                        {
+                            Id = 1,
+                            Description = "Events related to user sessions.",
+                            Name = "Session",
+                            NormalizedName = "SESSION"
                         });
                 });
 
@@ -336,26 +410,58 @@ namespace backend.Migrations
                     b.HasData(
                         new
                         {
-                            Id = "329e6542-ab1f-46ef-a00b-c8c0ca84d454",
-                            CreatedAt = new DateTime(2025, 2, 11, 5, 4, 13, 364, DateTimeKind.Utc).AddTicks(2173),
-                            Description = "Administrator",
+                            Id = "1",
+                            ConcurrencyStamp = "f5dd7f67-3d93-4f3a-a911-1adb40bbd3df",
+                            CreatedAt = new DateTime(2025, 2, 12, 6, 42, 24, 739, DateTimeKind.Utc).AddTicks(4088),
+                            Description = "Administrator role",
                             IsActive = true,
-                            Level = 100,
+                            Level = 0,
                             Name = "Admin",
                             NormalizedName = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 2, 11, 5, 4, 13, 364, DateTimeKind.Utc).AddTicks(2176)
+                            UpdatedAt = new DateTime(2025, 2, 12, 6, 42, 24, 739, DateTimeKind.Utc).AddTicks(4090)
                         },
                         new
                         {
-                            Id = "dfe960ff-f6a7-4d50-85b1-a39c062a1ea6",
-                            CreatedAt = new DateTime(2025, 2, 11, 5, 4, 13, 364, DateTimeKind.Utc).AddTicks(3600),
-                            Description = "User",
+                            Id = "2",
+                            ConcurrencyStamp = "37c77ed3-57e0-4067-9fdf-ab9e995a08c5",
+                            CreatedAt = new DateTime(2025, 2, 12, 6, 42, 24, 746, DateTimeKind.Utc).AddTicks(5639),
+                            Description = "User role",
                             IsActive = true,
-                            Level = 90,
+                            Level = 0,
                             Name = "User",
                             NormalizedName = "USER",
-                            UpdatedAt = new DateTime(2025, 2, 11, 5, 4, 13, 364, DateTimeKind.Utc).AddTicks(3601)
+                            UpdatedAt = new DateTime(2025, 2, 12, 6, 42, 24, 746, DateTimeKind.Utc).AddTicks(5644)
                         });
+                });
+
+            modelBuilder.Entity("backend.Data.Models.SyncedRecording", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DownloadUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RecordingDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StreamingUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SyncedRecordings");
                 });
 
             modelBuilder.Entity("backend.Data.Models.User", b =>
@@ -437,48 +543,18 @@ namespace backend.Migrations
                     b.HasData(
                         new
                         {
-                            Id = "81437d01-53a2-45a1-933d-a10a18897440",
+                            Id = "1",
                             AccessFailedCount = 0,
-                            ConcurrencyStamp = "080143b5-8a7b-43c7-a046-b5bbdd2f831f",
-                            EmailConfirmed = false,
+                            ConcurrencyStamp = "2c966cbc-1905-424a-90be-99269da8c211",
+                            EmailConfirmed = true,
                             LockoutEnabled = false,
                             NormalizedUserName = "GHIE-API",
-                            PasswordHash = "AQAAAAIAAYagAAAAEM8EmHNLPfhZfVItgV8CApcc7PEc5Mg+zhyQ+H0MMIwfYEEaKDUcR1p2zL31OpZaAw==",
+                            PasswordHash = "AQAAAAIAAYagAAAAEBhkT0sHWFMsOkqlevgIwi9a99eXPRDePmw0+lLpkNY3UvCOxQTSq2gkp9bIRdHNXg==",
                             PhoneNumberConfirmed = false,
-                            SecurityStamp = "14d170b5-5a1c-4c2f-8050-fae338812562",
+                            SecurityStamp = "2cee6bc6-4268-4d37-b67b-be550ba1a755",
                             TwoFactorEnabled = false,
                             UserName = "GHIE-API"
                         });
-                });
-
-            modelBuilder.Entity("backend.Models.SyncedRecording", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DownloadUrl")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime>("RecordingDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("StreamingUrl")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SyncedRecordings");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -535,21 +611,20 @@ namespace backend.Migrations
             modelBuilder.Entity("backend.Data.Models.AuditEntry", b =>
                 {
                     b.HasOne("backend.Data.Models.AuditEvent", "Event")
-                        .WithMany()
+                        .WithMany("AuditEntries")
                         .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.HasOne("backend.Models.SyncedRecording", "Recording")
-                        .WithMany()
+                    b.HasOne("backend.Data.Models.SyncedRecording", "Recording")
+                        .WithMany("AuditEntries")
                         .HasForeignKey("RecordId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("backend.Data.Models.User", "User")
-                        .WithMany()
+                        .WithMany("AuditEntries")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Event");
@@ -557,6 +632,37 @@ namespace backend.Migrations
                     b.Navigation("Recording");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("backend.Data.Models.AuditEvent", b =>
+                {
+                    b.HasOne("backend.Data.Models.AuditEventType", "Type")
+                        .WithMany("Events")
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Type");
+                });
+
+            modelBuilder.Entity("backend.Data.Models.AuditEvent", b =>
+                {
+                    b.Navigation("AuditEntries");
+                });
+
+            modelBuilder.Entity("backend.Data.Models.AuditEventType", b =>
+                {
+                    b.Navigation("Events");
+                });
+
+            modelBuilder.Entity("backend.Data.Models.SyncedRecording", b =>
+                {
+                    b.Navigation("AuditEntries");
+                });
+
+            modelBuilder.Entity("backend.Data.Models.User", b =>
+                {
+                    b.Navigation("AuditEntries");
                 });
 #pragma warning restore 612, 618
         }
