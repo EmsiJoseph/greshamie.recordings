@@ -9,6 +9,8 @@
   </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Asp.Versioning.Mvc" Version="8.1.0" />
+        <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
         <PackageReference Include="AspNetCore.Authentication.ApiKey" Version="8.0.1" />
         <PackageReference Include="AutoMapper" Version="13.0.1" />
         <PackageReference Include="Azure.Storage.Blobs" Version="12.23.0" />
@@ -19,6 +21,7 @@
         <PackageReference Include="Microsoft.AspNetCore.Antiforgery" Version="2.3.0" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.1" />
         <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="9.0.1" />
+        <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="9.0.1" />
         <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.1" />
         <PackageReference Include="Microsoft.AspNetCore.JsonPatch" Version="9.0.1" />
         <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" Version="2.3.0" />
@@ -47,6 +50,7 @@
         <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
         <PackageReference Include="System.Text.Json" Version="9.0.1" />
         <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="Yarp.ReverseProxy" Version="2.2.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -54,7 +58,6 @@
       <Folder Include="ClarifyGoServices\HistoricRecordings\" />
       <Folder Include="ClarifyGoServices\LiveRecordings\" />
       <Folder Include="ClarifyGoServices\Tags\" />
-      <Folder Include="Models\" />
     </ItemGroup>
 
 </Project>

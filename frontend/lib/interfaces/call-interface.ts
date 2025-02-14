@@ -12,15 +12,15 @@ export interface ICall {
     isLive: boolean,
     durationSeconds: number, // Seconds
     recorder: string,
-    StreamingUrl: string,
-    DownloadUrl: string,
+    streamingUrl: string,
+    downloadUrl: string,
 }
 
 export interface ICallFilters {
     search?: string,
     callDirection?: TCallDirections,
-    startDate?: Date, // UTC Str
-    endDate?: Date, // UTC Str
+    startDate?: string, // UTC Str
+    endDate?: string, // UTC Str
     minimumDurationSeconds?: number,
     maximumDurationSeconds?: number,
     caller?: string,
@@ -29,6 +29,15 @@ export interface ICallFilters {
     hasVideoRecording?: boolean,
     hasPciCompliance?: boolean,
     hasQualityEvaluation?: boolean,
+
+
+    // Pagination
+    hasNext?: boolean,
+    hasPrevious?: boolean,
+    pageSize?: number
+    pageOffSet?: number
+    totalCount?: number,
+    totalPages?: number
 }
 
 export interface ICallLogs {
@@ -36,18 +45,23 @@ export interface ICallLogs {
     hasPrevious?: boolean,
     items: ICall[] | [],
     pageSize?: number
-    pageOffset?: number
+    pageOffSet?: number
     totalCount?: number,
     totalPages?: number
-    StreamingUrl: string,
+    streamingUrl?: string,
+    downloadUrl?: string,
 }
 
 export interface ICallAdvanceFilterComponent {
-    startDate?: Date, // UTC Str
-    endDate?: Date, // UTC Str
+    startDate?: string, // UTC Str
+    endDate?: string, // UTC Str
+    startTime?: string, // [HH:mm (24-hour time format)]
+    endTime?: string, // [HH:mm (24-hour time format)]
     minimumDurationSeconds?: number,
     maximumDurationSeconds?: number,
     hasVideoRecording?: boolean,
     hasPciCompliance?: boolean,
     hasQualityEvaluation?: boolean,
 }
+
+export type TCallFilterKeys = keyof ICallFilters;

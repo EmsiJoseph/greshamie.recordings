@@ -110,3 +110,4 @@ jspm_packages
 .node_repl_history
 .next
 .env
+.env.local

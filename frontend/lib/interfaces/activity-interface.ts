@@ -11,20 +11,33 @@ export interface IActivity {
     timestamp: Date,
 }
 export interface IActivityResponse {
-    items?: IActivity[] | [],
-    pageOffset?: number,
-    pageSize?: number,
-    totalPages?: number,
-    totalCount?: number,
-    hasPrevious?: boolean,
     hasNext?: boolean,
+    hasPrevious?: boolean,
+    items: IActivity[] | [],
+    pageSize?: number
+    pageOffSet?: number
+    totalCount?: number,
+    totalPages?: number
 }
 
 export interface IActivityFilters {
     search?: string,
     eventType?: TEventType,
-    startDate?: Date,
-    endDate?: Date,
-    user?: string,
-    recordingItem?: string,
+    startDate?: string,
+    endDate?: string,
+
+    // Pagination
+    hasNext?: boolean,
+    hasPrevious?: boolean,
+    pageSize?: number
+    pageOffSet?: number
+    totalCount?: number,
+    totalPages?: number
+}
+
+export interface IActivityAdvanceFilterComponent {
+    startDate?: string,
+    endDate?: string,
+    startTime?: string,
+    endTime?: string,
 }
