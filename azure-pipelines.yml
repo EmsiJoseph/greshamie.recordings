@@ -17,7 +17,9 @@ steps:
   persistCredentials: true
 
 - script: |
-    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git cd $GITHUB_REPO
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git 
+    
+    cd $GITHUB_REPO
 
     # Configure Git identity
     git config --global user.email "Mcjoseph.Agbanlog@wizard-ai.com"
