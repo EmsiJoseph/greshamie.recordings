@@ -1,85 +1,127 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { IActivity } from "@/lib/interfaces/activity-interface";
-import { EllipsisVertical, Trash2, Download, LogIn, Play, LogOut } from "lucide-react";
-import React from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { IActivity, IActivityResponse } from "@/lib/interfaces/activity-interface";
+import {
+  EllipsisVertical,
+  ArrowUpDown,
+  ArrowUpWideNarrow,
+  ArrowDownNarrowWide,
+} from "lucide-react";
+import React, { useState } from "react";
 import ActivityListSkeleton from "@/components/presentational/activity-list-skeleton";
-import ActivityListPagination from "@/components/presentational/activity-list-pagination";
+import ActivityListPagination, {
+  Pagination,
+} from "@/components/common/pagination";
+import ActivityIcon from "./activity-type-with-icon";
+import { formatDate } from "@/lib/utils/format-date";
+import { eventDirectionIcons } from "@/constants/activity-types";
+import { sortData, ISortConfig } from "@/lib/utils/sort-data";
+import { ActivityPagination } from "./activity-pagination";
 
 interface ActivityListProps {
-  activities?: IActivity[];
+  activities?: IActivityResponse;
   isFetching: boolean;
 }
 
-
-// Map raw action types to display-friendly labels
-const activityLabels: Record<string, string> = {
-  STARTED: "Session Started",
-  PLAYED: "Recording Played",
-  ENDED: "Session Ended",
-  EXPORTED: "Recording Exported",
-  DELETED: "Recording Deleted",
-};
-
-const activityIcons: Record<string, { icon: React.ElementType; colorClass: string }> = {
-  STARTED: { icon: LogIn, colorClass: "text-green-700" },
-  PLAYED: { icon: Play, colorClass: "text-cyan-700" },
-  ENDED: { icon: LogOut, colorClass: "text-red-500" },
-  EXPORTED: { icon: Download, colorClass: "text-yellow-600" },
-  DELETED: { icon: Trash2, colorClass: "text-red-700" },
-};
-
 export const ActivityList = ({ activities, isFetching }: ActivityListProps) => {
-
-  const [page, setPage] = React.useState(1); // Should be in getUrlParams
-
-  const totalPages = 5; // Temporary total pages
+  const [page, setPage] = React.useState(1);
+  const [totalPages, setTotalPages] = React.useState(0);
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
-  }
-  
+  };
+
+  const [sortConfig, setSortConfig] = useState<ISortConfig<IActivity> | null>({
+    key: "timestamp",
+    direction: "descending",
+  });
+
+  const sortedActivities = React.useMemo(
+    () => sortData(activities?.items ?? [], sortConfig),
+    [activities, sortConfig]
+  );
+
+  const requestSort = (key: keyof IActivity) => {
+    let direction: "ascending" | "descending" | null = "ascending";
+    if (sortConfig && sortConfig.key === key) {
+      if (sortConfig.direction === "ascending") {
+        direction = "descending";
+      } else if (sortConfig.direction === "descending") {
+        direction = null;
+      }
+    }
+    setSortConfig(direction ? { key, direction } : null);
+  };
+
+  const getSortIcon = (key: string) => {
+    if (!sortConfig) return <ArrowUpDown size={15} />;
+    if (sortConfig.key !== key) return <ArrowUpDown size={15} />;
+    return sortConfig.direction === "ascending" ? (
+      <ArrowUpWideNarrow size={15} />
+    ) : (
+      <ArrowDownNarrowWide size={15} />
+    );
+  };
+
   if (isFetching) {
     return <ActivityListSkeleton />;
   }
 
   return (
-    <div className="">
+    <div className="w-full">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>User</TableHead>
-            <TableHead>Recording Item</TableHead>
+            <TableHead onClick={() => requestSort("timestamp")}>
+              Date {getSortIcon("timestamp")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("userName")}>
+              User {getSortIcon("userName")}
+            </TableHead>
             <TableHead>Action</TableHead>
-            <TableHead></TableHead>
           </TableRow>
         </TableHeader>
 
         <TableBody>
-          {activities && activities.length > 0 ? (
-            activities.map((activity) => (
-              <TableRow key={activity.date.toString()}>
-                <TableCell>{activity.date instanceof Date ? activity.date.toLocaleString() : activity.date}</TableCell>
-                <TableCell>{activity.user}</TableCell>
-                <TableCell>{activity.recordingItem}</TableCell>
+          {sortedActivities && sortedActivities.length > 0 ? (
+            sortedActivities.map((activity) => (
+              <TableRow key={activity.id}>
+                <TableCell>{formatDate(activity.timestamp)}</TableCell>
+                <TableCell>{activity.userName}</TableCell>
 
-                {/* Action column with icon and readable label */}
-                <TableCell>
-                  {activity.action && activityIcons[activity.action] ? (
-                    <div className={`flex items-center ${activityIcons[activity.action].colorClass}`}>
-                      {React.createElement(activityIcons[activity.action].icon, {
-                        className: "h-5 w-5",
-                      })}
-                      <span className="ml-2 font-bold">{activityLabels[activity.action] || "Unknown Action"}</span>
-                    </div>
-                  ) : (
-                    <span>No Action</span> 
-                  )}
-                </TableCell>
-
-                {/* Ellipsis (Actions column) */}
-                <TableCell>
-                  <EllipsisVertical className="h-4" />
+                <TableCell className="flex items-center gap-2">
+                  {
+                    <>
+                      {React.createElement(
+                        eventDirectionIcons[activity.eventName.toUpperCase()]
+                          .icon,
+                        {
+                          className:
+                            eventDirectionIcons[
+                              activity.eventName.toUpperCase()
+                            ].colorClass,
+                          size: 20,
+                        }
+                      )}
+                      <span
+                        className={
+                          eventDirectionIcons[activity.eventName.toUpperCase()]
+                            .colorClass
+                        }
+                      >
+                        {
+                          eventDirectionIcons[activity.eventName.toUpperCase()]
+                            .value
+                        }
+                      </span>
+                    </>
+                  }
                 </TableCell>
               </TableRow>
             ))
@@ -92,11 +134,7 @@ export const ActivityList = ({ activities, isFetching }: ActivityListProps) => {
           )}
         </TableBody>
       </Table>
-      <ActivityListPagination
-        currentPage={page}
-        totalPages={totalPages}
-        onPageChange={handlePageChange}
-      />
+      <ActivityPagination activities={activities} />
     </div>
   );
 };

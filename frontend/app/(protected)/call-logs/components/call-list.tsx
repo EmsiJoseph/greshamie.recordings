@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import {
   Table,
   TableBody,
@@ -6,47 +7,52 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ICall } from "@/lib/interfaces/call-interface";
+import { ArrowUpDown, ArrowUpWideNarrow, ArrowDownNarrowWide, CirclePlay, Pause } from "lucide-react";
+import { ICall, ICallLogs } from "@/lib/interfaces/call-interface";
 import CallListSkeleton from "@/components/presentational/call-list-skeleton";
-import {
-  MoveDownLeft,
-  MoveUpRight,
-  ArrowRightLeft,
-  Pause,
-  CirclePlay,
-} from "lucide-react";
-import React from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { formatDurationToHours } from "@/lib/utils/format-duration";
+import { CallTypeWithIcon } from "./call-type-with-icon";
+import { formatDate } from "@/lib/utils/format-date";
+import { sortData, ISortConfig } from "@/lib/utils/sort-data";
+import { CallPagination } from "./call-pagination";
 
 interface CallListProps {
-  calls?: ICall[];
+  calls?: ICallLogs;
   isFetching?: boolean;
-  onPlayAudio?: (url: string | null) => void;
+  onPlayAudio?: (call: ICall | null) => void;
+  activeCallId?: string | number | null;
+  audioPlaying?: boolean;
+  onToggleAudio?: () => void;
 }
 
-const callLabels: Record<string, string> = {
-  INCOMING: "Incoming",
-  OUTGOING: "Outgoing",
-  INTERNAL: "Internal",
-};
+export const CallList = ({
+  calls,
+  isFetching,
+  onPlayAudio,
+  activeCallId,
+  audioPlaying,
+  onToggleAudio, }: CallListProps) => {
 
-const callIcons: Record<string, { icon: any; colorClass: string }> = {
-  INCOMING: { icon: MoveDownLeft, colorClass: "text-green-700" },
-  OUTGOING: { icon: MoveUpRight, colorClass: "text-orange-700" },
-  INTERNAL: { icon: ArrowRightLeft, colorClass: "text-blue-700" },
-};
+  const [sortConfig, setSortConfig] = useState<ISortConfig<ICall> | null>({ key: "endDateTime", direction: "descending" });
+  const sortedCalls = React.useMemo(() => sortData(calls?.items ?? [], sortConfig), [calls?.items, sortConfig]);
 
-const formatDuration = (seconds: number) => {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-};
+  const requestSort = (key: keyof ICall) => {
+    let direction: "ascending" | "descending" | null = "ascending";
+    if (sortConfig && sortConfig.key === key) {
+      if (sortConfig.direction === "ascending") {
+        direction = "descending";
+      } else if (sortConfig.direction === "descending") {
+        direction = null;
+      }
+    }
+    setSortConfig(direction ? { key, direction } : null);
+  };
 
-export const CallList = ({ calls, isFetching, onPlayAudio }: CallListProps) => {
-  const queryClient = useQueryClient();
-  const currentAudioUrl = queryClient.getQueryData<string | null>([
-    "currentAudio",
-  ]);
+  const getSortIcon = (key: keyof ICall) => {
+    if (!sortConfig) return <ArrowUpDown size={15} />;
+    if (sortConfig.key !== key) return <ArrowUpDown size={15} />;
+    return sortConfig.direction === "ascending" ? <ArrowUpWideNarrow size={15} /> : <ArrowDownNarrowWide size={15} />;
+  };
 
   if (isFetching) {
     return <CallListSkeleton />;
@@ -57,67 +63,64 @@ export const CallList = ({ calls, isFetching, onPlayAudio }: CallListProps) => {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Caller</TableHead>
-            <TableHead>Receiver</TableHead>
-            <TableHead>Call Type</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead>Recorder</TableHead>
+            <TableHead onClick={() => requestSort("caller")}>
+              Caller {getSortIcon("caller")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("receiver")}>
+              Receiver {getSortIcon("receiver")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("startDateTime")}>
+              Start Date {getSortIcon("startDateTime")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("endDateTime")}>
+              End Date {getSortIcon("endDateTime")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("callType")}>
+              Call Direction {getSortIcon("callType")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("isLive")}>
+              Is Live {getSortIcon("isLive")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("durationSeconds")}>
+              Duration {getSortIcon("durationSeconds")}
+            </TableHead>
+            <TableHead onClick={() => requestSort("recorder")}>
+              Recorder {getSortIcon("recorder")}
+            </TableHead>
           </TableRow>
         </TableHeader>
 
         <TableBody>
-          {calls && calls.length > 0 ? (
-            calls.map((call) => (
-              <TableRow key={call.id}>
+          {sortedCalls && sortedCalls.length > 0 ? (
+            sortedCalls.map((call: ICall) => (
+              <TableRow key={String(call?.id)}>
+                <TableCell>{call?.caller}</TableCell>
+                <TableCell>{call?.receiver}</TableCell>
+                <TableCell>{formatDate(call?.startDateTime)}</TableCell>
+                <TableCell>{formatDate(call?.endDateTime)}</TableCell>
                 <TableCell>
-                  {call.date instanceof Date
-                    ? call.date.toLocaleString()
-                    : call.date}
+                  <CallTypeWithIcon callType={call?.callType} />
                 </TableCell>
-                <TableCell>{call.caller}</TableCell>
-                <TableCell>{call.receiver}</TableCell>
-                <TableCell>
-                  {call.callType && callIcons[call.callType] ? (
-                    <div
-                      className={`flex items-center ${
-                        callIcons[call.callType].colorClass
-                      }`}
-                    >
-                      {React.createElement(callIcons[call.callType].icon, {
-                        className: "h-5 w-5",
-                      })}
-                      <span className="ml-2 font-bold">
-                        {callLabels[call.callType] || "Unknown Action"}
-                      </span>
-                    </div>
-                  ) : (
-                    <span>No Action</span>
-                  )}
-                </TableCell>
+                <TableCell>{call?.isLive ? "True" : "False"}</TableCell>
                 <TableCell>
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => {
-                        if (call.streamingUrl) {
-                          onPlayAudio &&
-                            onPlayAudio(
-                              currentAudioUrl === call.streamingUrl
-                                ? null
-                                : call.streamingUrl
-                            );
+                        if (activeCallId === call.id) {
+                          onToggleAudio && onToggleAudio();
+                        } else {
+                          onPlayAudio && onPlayAudio(call);
                         }
                       }}
                       className="text-gray-700 cursor-pointer"
                     >
-                      {currentAudioUrl === call.streamingUrl ? (
+                      {activeCallId === call.id && audioPlaying ? (
                         <Pause className="h-5 w-5 text-blue-500" />
                       ) : (
                         <CirclePlay className="h-5 w-5 text-green-500" />
                       )}
                     </button>
-
-                    <span>{formatDuration(call.duration)}</span>
+                    <span>{formatDurationToHours(call.durationSeconds)}</span>
                   </div>
                 </TableCell>
                 <TableCell>{call.recorder}</TableCell>
@@ -132,6 +135,8 @@ export const CallList = ({ calls, isFetching, onPlayAudio }: CallListProps) => {
           )}
         </TableBody>
       </Table>
+
+      <CallPagination callLogs={calls} />
     </div>
   );
 };

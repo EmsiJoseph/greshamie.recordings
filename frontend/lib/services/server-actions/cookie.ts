@@ -3,6 +3,7 @@ import { IAccessToken, IRefreshToken, IUserWithToken } from "@/lib/interfaces/us
 import { add } from "date-fns"
 // TODO: Secure cookie, don't expose user data and tokens on cookie [security risk]
 import { cookies } from "next/headers";
+import { useAuthStore } from "@/hooks/auth-store";
 // import {IAuthCookie, ILoginApiResponse, ILoginOutput, IUser} from "@/lib/interfaces";
 
 const auth = "auth";
@@ -25,9 +26,18 @@ export const getParsedAuthCookie = async (): Promise<IUserWithToken | null> => {
  * @return {Promise<boolean>} - A Promise that resolves when the cookie is successfully set.
  */
 export const setAuthCookie = async (response: IUserWithToken): Promise<boolean> => {
+    // TODO: Test the middleware make access token / refresh token expired
+    // NOTE: if Both access and refresh is expired, middleware works as expected
+    // if (response && response?.accessToken && response?.refreshToken) {
+    //     const now = new Date();
+    //     const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+    //     response.accessToken.expiresAt = thirtyMinutesAgo.toISOString()
+    //     response.refreshToken.expiresAt = thirtyMinutesAgo.toISOString()
+
+    // }
     // Store cookie using `auth` key
+    
     const authCookie = JSON.stringify(response);
-    console.log("AUTH COOKIE", authCookie)
 
     const cookieStore = await cookies();
     const isAuthCookieSet = await cookieStore.set(auth, authCookie, {
@@ -35,6 +45,8 @@ export const setAuthCookie = async (response: IUserWithToken): Promise<boolean> 
         secure: false,
         maxAge: 60 * 60 * 24,
     });
+    
+    
     return !!isAuthCookieSet;
 }
 
@@ -72,8 +84,6 @@ export const deleteAuthCookie = async () => {
 export const getAccessToken = async (): Promise<IAccessToken | undefined> => {
     const cookieStore = await cookies();
     const cookie = cookieStore.get(auth);
-
-    // console.log("COOKIIEEE", cookie)
 
     const parsedCookie: IUserWithToken = cookie ? JSON.parse(cookie.value) : null;
 
