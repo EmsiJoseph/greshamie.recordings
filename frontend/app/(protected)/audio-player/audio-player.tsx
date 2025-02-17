@@ -1,10 +1,8 @@
 "use client";
-
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import ReactPlayer from "react-player";
 import {
   Download,
-  Forward,
   Pause,
   Play,
   Redo,
@@ -16,41 +14,46 @@ import {
 } from "lucide-react";
 
 interface AudioPlayerProps {
-  url: string | null;
-  onClose?: () => void;
+  url: string;
+  playing: boolean;
+  onPlayPause: () => void;
+  onClose: () => void;
+  downloadUrl?: string;
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ url }) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [played, setPlayed] = useState(0);
+const AudioPlayer: React.FC<AudioPlayerProps> = ({
+  url,
+  playing,
+  onPlayPause,
+  onClose,
+  downloadUrl,
+}) => {
+  const [played, setPlayed] = useState<number>(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.5);
   const [muted, setMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showSpeedOptions, setShowSpeedOptions] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragProgress, setDragProgress] = useState(0);
   const playerRef = useRef<ReactPlayer | null>(null);
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // When URL changes, show the player but do not auto-play
   useEffect(() => {
-    if (url) {
-      setIsVisible(true);
-      setPlaying(false);
-    }
+    setError(null);
   }, [url]);
 
-  if (!isVisible || !url) return null; // Hide player if closed or no URL
-
-  const handlePlayPause = () => setPlaying(!playing);
-
-  const handleSeek = (seconds: number) => {
-    if (playerRef.current) {
-      playerRef.current.seekTo(playerRef.current.getCurrentTime() + seconds);
+  const handleProgress = (state: { played: number }) => {
+    if (!isDragging) {
+      setPlayed(state.played);
     }
   };
 
-  const handleProgress = (state: { played: number }) => {
-    setPlayed(state.played);
+  const handlePlayerError = (err: any) => {
+    setError(
+      "Error fetchhing audio file, please try again later or contact an Administrator."
+    );
   };
 
   const formatTime = (seconds: number) => {
@@ -79,30 +82,114 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ url }) => {
     return <Volume2 />;
   };
 
+  // DRAG-TO-SEEK HANDLERS
+  const updateDragProgress = (clientX: number) => {
+    if (progressBarRef.current) {
+      const rect = progressBarRef.current.getBoundingClientRect();
+      let newProgress = (clientX - rect.left) / rect.width;
+      if (newProgress < 0) newProgress = 0;
+      if (newProgress > 1) newProgress = 1;
+      setDragProgress(newProgress);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    setIsDragging(true);
+    updateDragProgress(e.clientX);
+  };
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging) return;
+      updateDragProgress(e.clientX);
+    },
+    [isDragging]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    if (isDragging) {
+      setIsDragging(false);
+      const newTime = (isDragging ? dragProgress : played) * duration;
+      if (playerRef.current) {
+        playerRef.current.seekTo(newTime, "seconds");
+      }
+      setPlayed(dragProgress);
+    }
+  }, [isDragging, dragProgress, played, duration]);
+
+  // Event listeners for Audio dragging.
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    } else {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, dragProgress, duration, handleMouseMove, handleMouseUp]);
+
   return (
-    <div className="w-full bg-white p-4 rounded-lg shadow-lg flex flex-col relative mt-10">
+    // <div className="w-full bg-white p-4 rounded-lg shadow-lg flex flex-col relative mt-10">
+    <div className="fixed bottom-0 left-0  right-0 bg-white p-4 shadow-lg flex flex-col z-50">
+      {/* {error && (
+        <div className="flex justify-center text-red-500 text-center mt-2">
+          {error}
+        </div>
+      )} */}
       {/* Progress Bar */}
-      <div className="w-full bg-gray-200 h-2 rounded relative">
+      <div
+        className="w-full bg-gray-200 h-2 rounded relative cursor-pointer"
+        ref={progressBarRef}
+        onMouseDown={handleMouseDown}
+      >
         <div
           className="absolute top-0 left-0 h-2 bg-green-500 rounded"
-          style={{ width: `${played * 100}%` }}
+          style={{
+            width: `${(isDragging ? dragProgress : played) * 100}%`,
+          }}
+        />
+        {/* Draggable Handle */}
+        <div
+          className="absolute top-[-4px] w-4 h-4 bg-green-500 rounded-full cursor-pointer"
+          style={{
+            left: `calc(${(isDragging ? dragProgress : played) * 100}% - 8px)`,
+          }}
+          onMouseDown={handleMouseDown}
         />
       </div>
 
       {/* Controls */}
       <div className="flex items-center justify-between mt-3 text-gray-700 w-full">
-        {/* Left Controls */}
         <div className="flex items-center gap-4">
-          <button onClick={handlePlayPause} className="text-xl">
+          <button onClick={onPlayPause} className="text-xl">
             {playing ? <Pause /> : <Play />}
           </button>
-          <button onClick={() => handleSeek(-10)}>
+          <button
+            onClick={() => {
+              if (playerRef.current) {
+                playerRef.current.seekTo(
+                  playerRef.current.getCurrentTime() - 10
+                );
+              }
+            }}
+          >
             <Undo />
           </button>
-          <button onClick={() => handleSeek(10)}>
+          <button
+            onClick={() => {
+              if (playerRef.current) {
+                playerRef.current.seekTo(
+                  playerRef.current.getCurrentTime() + 10
+                );
+              }
+            }}
+          >
             <Redo />
           </button>
-
           {/* Volume Control */}
           <div className="flex items-center gap-2">
             <button onClick={() => setMuted(!muted)}>{getVolumeIcon()}</button>
@@ -120,22 +207,22 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ url }) => {
 
         {/* Time Display */}
         <span className="text-sm flex-1 text-center">
-          {formatTime(played * duration)} / {formatTime(duration)}
+          {formatTime((isDragging ? dragProgress : played) * duration)} /{" "}
+          {formatTime(duration)}
         </span>
 
-        {/* Right Controls */}
+        {/* Playback Speed Control */}
         <div className="flex items-center gap-4">
-          {/* Playback Speed Control */}
           <div className="relative">
             <button onClick={() => setShowSpeedOptions(!showSpeedOptions)}>
               {playbackRate}x
             </button>
             {showSpeedOptions && (
-              <div className="absolute bg-white shadow-md rounded-md p-2 top-full mt-1 right-0">
+              <div className="absolute bg-white shadow-md rounded-md p-2 bottom-full mb-1 left-0 flex flex-col gap-1">
                 {[0.5, 1, 1.5, 2].map((rate) => (
                   <button
                     key={rate}
-                    className={`block px-3 py-1 w-full text-left text-sm hover:bg-gray-200 ${
+                    className={`px-3 py-1 text-sm hover:bg-gray-200 ${
                       playbackRate === rate ? "font-bold" : ""
                     }`}
                     onClick={() => handlePlaybackRateChange(rate)}
@@ -148,17 +235,20 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ url }) => {
           </div>
 
           {/* Download Button */}
-          <a href={url} download className="cursor-pointer">
+          <a
+            href={downloadUrl || "#"}
+            download={`call-recording-${new Date().toISOString()}.mp3`}
+            className={`cursor-pointer ${
+              downloadUrl ? "" : "opacity-50 pointer-events-none"
+            }`}
+          >
             <Download className="h-5 w-5 text-blue-500" />
           </a>
 
           {/* Close Button */}
           <div
             className="flex items-center text-red-500 cursor-pointer"
-            onClick={() => {
-              setPlaying(false);
-              setIsVisible(false);
-            }}
+            onClick={onClose}
           >
             <X className="cursor-pointer text-red-500" />
             <span>Close</span>
@@ -166,7 +256,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ url }) => {
         </div>
       </div>
 
-      {/* React Player */}
       <ReactPlayer
         ref={playerRef}
         url={url}
@@ -176,8 +265,16 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ url }) => {
         playbackRate={playbackRate}
         onProgress={handleProgress}
         onDuration={(d) => setDuration(d)}
+        onError={handlePlayerError}
         width="100%"
         height="0px"
+        config={{
+          file: {
+            attributes: {
+              crossOrigin: "anonymous",
+            },
+          },
+        }}
       />
     </div>
   );
