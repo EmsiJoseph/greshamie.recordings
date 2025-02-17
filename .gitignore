@@ -8,6 +8,7 @@
 *.userosscache
 *.sln.docstates
 .idea/
+build
 
 
 # ASP.NET
