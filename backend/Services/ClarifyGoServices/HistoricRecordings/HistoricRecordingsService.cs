@@ -1,150 +1,95 @@
 using System.Net;
 using System.Text.Json;
-using backend.Classes;
-using backend.Constants;
+using backend.ClarifyGoClasses;
+using backend.Constants.ClarifyGo;
 using backend.DTOs;
+using backend.DTOs.Recording;
 using backend.Exceptions;
 using backend.Services.Auth;
 using IdentityModel.Client;
-using Microsoft.IdentityModel.Tokens;
+using backend.Utilities;
 
 namespace backend.Services.ClarifyGoServices.HistoricRecordings
 {
-    public class HistoricRecordingsService : IHistoricRecordingsService
+    public class HistoricRecordingsService(HttpClient httpClient, ITokenService tokenService)
+        : IHistoricRecordingsService
     {
-        private readonly HttpClient _httpClient;
-        private readonly ITokenService _tokenService;
+        private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 
-        public HistoricRecordingsService(HttpClient httpClient, ITokenService tokenService)
-        {
-            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-            _tokenService = tokenService ?? throw new ArgumentNullException(nameof(tokenService));
-        }
+        private readonly ITokenService _tokenService =
+            tokenService ?? throw new ArgumentNullException(nameof(tokenService));
 
         public void SetBearerToken(string token)
         {
             _httpClient.SetBearerToken(token);
         }
 
-        private List<string> BuildQueryParameters(RecordingSearchFiltersDto? filters)
+        private string BuildQueryParameters(RecordingSearchFiltersDto? filters)
         {
-            var queryParams = new List<string>();
+            var builder = new QueryParameterBuilder();
 
-            if (filters == null)
-            {
-                return queryParams;
-            }
+            if (filters == null) return string.Empty;
 
-            // Time parameters: Both EarliestTimeOfDay and LatestTimeOfDay must be provided together.
+            // Time of day filters
             if (filters.EarliestTimeOfDay.HasValue || filters.LatestTimeOfDay.HasValue)
             {
-                if (!filters.EarliestTimeOfDay.HasValue || !filters.LatestTimeOfDay.HasValue)
-                {
-                    queryParams.Add($"ticks=0");
-                }
-
-                queryParams.Add($"minTimeOfDay={FormatTimeSpan(filters.EarliestTimeOfDay.Value)}");
-                queryParams.Add($"maxTimeOfDay={FormatTimeSpan(filters.LatestTimeOfDay.Value)}");
+                builder
+                    .AddParameter(ClarifyGoQueryParameters.MinTimeOfDay, filters.EarliestTimeOfDay)
+                    .AddParameter(ClarifyGoQueryParameters.MaxTimeOfDay, filters.LatestTimeOfDay);
             }
 
             // Boolean parameters
-            AddQueryParam(queryParams, "hasScreenRecording", filters.HasScreenRecording);
-            AddQueryParam(queryParams, "hasPciEvents", filters.HasPciComplianceEvents);
-            AddQueryParam(queryParams, "hasRecordingEvaluation", filters.HasQualityEvaluation);
-            AddQueryParam(queryParams, "filterRecordingByCompletionTime", filters.FilterByRecordingEndTime);
-            AddQueryParam(queryParams, "searchUnallocatedDevices", filters.SearchUnallocatedDevices);
-            AddQueryParam(queryParams, "sortDescending", filters.SortDescending);
+            builder
+                .AddParameter(ClarifyGoQueryParameters.HasScreenRecording, filters.HasScreenRecording)
+                .AddParameter(ClarifyGoQueryParameters.HasPciEvents, filters.HasPciComplianceEvents)
+                .AddParameter(ClarifyGoQueryParameters.HasRecordingEvaluation, filters.HasQualityEvaluation)
+                .AddParameter(ClarifyGoQueryParameters.FilterRecordingByCompletionTime,
+                    filters.FilterByRecordingEndTime)
+                .AddParameter(ClarifyGoQueryParameters.SearchUnallocatedDevices, filters.SearchUnallocatedDevices)
+                .AddParameter(ClarifyGoQueryParameters.SortDescending, filters.SortDescending);
 
             // Numeric parameters
-            AddQueryParam(queryParams, "minDurationSeconds", filters.MinimumDurationSeconds);
-            AddQueryParam(queryParams, "maxDurationSeconds", filters.MaximumDurationSeconds);
+            builder
+                .AddParameter(ClarifyGoQueryParameters.MinDurationSeconds, filters.MinimumDurationSeconds)
+                .AddParameter(ClarifyGoQueryParameters.MaxDurationSeconds, filters.MaximumDurationSeconds)
+                .AddParameter(ClarifyGoQueryParameters.FirstResultIndex, filters.PageOffset)
+                .AddParameter(ClarifyGoQueryParameters.MaxResults, filters.PageSize);
 
-            // Pagination parameters
-            AddQueryParam(queryParams, "firstResultIndex", filters.PageOffset);
-            AddQueryParam(queryParams, "maxResults", filters.PageSize);
+            // String parameters
+            builder
+                .AddParameter(ClarifyGoQueryParameters.PhoneNumber, filters.PhoneNumber)
+                .AddParameter(ClarifyGoQueryParameters.Direction, filters.CallDirection?.ToLowerInvariant())
+                .AddParameter(ClarifyGoQueryParameters.Device, filters.DeviceNumber)
+                .AddParameter(ClarifyGoQueryParameters.HuntGroupNumber, filters.HuntGroupNumber)
+                .AddParameter(ClarifyGoQueryParameters.AccountCode, filters.AccountCode)
+                .AddParameter(ClarifyGoQueryParameters.CallId, filters.CallId)
+                .AddParameter(ClarifyGoQueryParameters.CommentText, filters.CommentContains)
+                .AddParameter(ClarifyGoQueryParameters.Tag, filters.TagName)
+                .AddParameter(ClarifyGoQueryParameters.Bookmark, filters.BookmarkText)
+                .AddParameter(ClarifyGoQueryParameters.RedundancyType, filters.RecorderType)
+                .AddParameter(ClarifyGoQueryParameters.RecorderFilter, filters.RecorderId)
+                .AddParameter(ClarifyGoQueryParameters.SortBy, filters.SortBy)
+                .AddParameter(ClarifyGoQueryParameters.RecordingGroupingId, filters.RecordingGroupId);
 
-            // Call metadata (String parameters)
-            AddQueryParam(queryParams, "phoneNumber", filters.PhoneNumber);
-            AddQueryParam(queryParams, "direction", filters.CallDirection);
-            AddQueryParam(queryParams, "device", filters.DeviceNumber);
-            AddQueryParam(queryParams, "huntGroupNumber", filters.HuntGroupNumber);
-            AddQueryParam(queryParams, "accountCode", filters.AccountCode);
-            AddQueryParam(queryParams, "callId", filters.CallId);
-
-            // Content filters
-            AddQueryParam(queryParams, "commentText", filters.CommentContains);
-            AddQueryParam(queryParams, "tag", filters.TagName);
-            AddQueryParam(queryParams, "bookmark", filters.BookmarkText);
-
-            // Recorder filters
-            AddQueryParam(queryParams, "redundancyType", filters.RecorderType);
-            AddQueryParam(queryParams, "recorderFilter", filters.RecorderId);
-
-            // Sorting parameter
-            AddQueryParam(queryParams, "sortBy", filters.SortBy);
-
-            // Advanced Filters
-            AddQueryParam(queryParams, "recordingGroupingId", filters.RecordingGroupId);
-
-            return queryParams;
+            return builder.Build();
         }
 
-        private void AddQueryParam<T>(List<string> queryParams, string name, T? value = null) where T : struct
-        {
-            if (value.HasValue)
-            {
-                var stringValue = value switch
-                {
-                    bool b => b.ToString().ToLower(),
-                    _ => value.Value.ToString()
-                };
-
-                stringValue ??= string.Empty;
-
-                queryParams.Add($"{name}={Uri.EscapeDataString(stringValue)}");
-            }
-        }
-
-        private void AddQueryParam(List<string> queryParams, string name, string? value)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                queryParams.Add($"{name}={Uri.EscapeDataString(value)}");
-            }
-        }
-
-        private string FormatTimeSpan(TimeSpan time)
-        {
-            // Formats the TimeSpan as "HH:mm" (wrapped in quotes for the API)
-            return Uri.EscapeDataString($"\"{time.Hours:D2}:{time.Minutes:D2}\"");
-        }
-
-        public async Task<IEnumerable<HistoricRecordingSearchResult>> SearchRecordingsAsync(
+        public async Task<PagedResponseDto<HistoricRecordingRaw>> SearchRecordingsAsync(
             RecordingSearchFiltersDto searchFiltersDto)
         {
             try
             {
+                // First call to get current page and total pages
                 await _tokenService.SetBearerTokenAsync(_httpClient);
-
-                // Get base URL without query parameters
                 var baseUrl = ClarifyGoApiEndpoints.HistoricRecordings.Search(
                     searchFiltersDto.StartDate,
                     searchFiltersDto.EndDate);
 
-                var queryParams = BuildQueryParameters(searchFiltersDto);
-
-                // Always use ? for the first parameter
-                var fullUrl = queryParams.Any()
-                    ? $"{baseUrl}?{string.Join("&", queryParams)}"
-                    : baseUrl;
-
-
-                var response = await _httpClient.GetAsync(fullUrl);
+                var queryString = BuildQueryParameters(searchFiltersDto);
+                var response = await _httpClient.GetAsync(baseUrl + queryString);
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
-                {
                     throw new ServiceException("Unauthorized access to recording service", 401);
-                }
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -153,7 +98,85 @@ namespace backend.Services.ClarifyGoServices.HistoricRecordings
                 }
 
                 var searchResultsObj = await response.Content.ReadFromJsonAsync<HistoricRecordingSearchResults>();
-                return searchResultsObj?.SearchResults ?? new List<HistoricRecordingSearchResult>();
+                if (searchResultsObj == null)
+                    throw new ServiceException("Invalid response from recording service", 502);
+
+                var recordings = searchResultsObj.SearchResults.Select(x => x.HistoricRecording).ToList();
+                var totalPages = searchResultsObj.TotalResults;
+
+                // Second call to get last page
+                if (totalPages > 0)
+                {
+                    var lastPageFilters = new RecordingSearchFiltersDto
+                    {
+                        StartDate = searchFiltersDto.StartDate,
+                        EndDate = searchFiltersDto.EndDate,
+                        EarliestTimeOfDay = searchFiltersDto.EarliestTimeOfDay,
+                        LatestTimeOfDay = searchFiltersDto.LatestTimeOfDay,
+                        HasScreenRecording = searchFiltersDto.HasScreenRecording,
+                        HasPciComplianceEvents = searchFiltersDto.HasPciComplianceEvents,
+                        HasQualityEvaluation = searchFiltersDto.HasQualityEvaluation,
+                        FilterByRecordingEndTime = searchFiltersDto.FilterByRecordingEndTime,
+                        SearchUnallocatedDevices = searchFiltersDto.SearchUnallocatedDevices,
+                        SortDescending = searchFiltersDto.SortDescending,
+                        MinimumDurationSeconds = searchFiltersDto.MinimumDurationSeconds,
+                        MaximumDurationSeconds = searchFiltersDto.MaximumDurationSeconds,
+                        PageOffset = totalPages - 1,
+                        PageSize = searchFiltersDto.PageSize,
+                        PhoneNumber = searchFiltersDto.PhoneNumber,
+                        CallDirection = searchFiltersDto.CallDirection,
+                        DeviceNumber = searchFiltersDto.DeviceNumber,
+                        HuntGroupNumber = searchFiltersDto.HuntGroupNumber,
+                        AccountCode = searchFiltersDto.AccountCode,
+                        CallId = searchFiltersDto.CallId,
+                        CommentContains = searchFiltersDto.CommentContains,
+                        TagName = searchFiltersDto.TagName,
+                        BookmarkText = searchFiltersDto.BookmarkText,
+                        RecorderType = searchFiltersDto.RecorderType,
+                        RecorderId = searchFiltersDto.RecorderId,
+                        SortBy = searchFiltersDto.SortBy,
+                        RecordingGroupId = searchFiltersDto.RecordingGroupId
+                    };
+
+                    var lastPageQueryString = BuildQueryParameters(lastPageFilters);
+                    var lastPageResponse = await _httpClient.GetAsync(baseUrl + lastPageQueryString);
+
+                    if (lastPageResponse.IsSuccessStatusCode)
+                    {
+                        var lastPageResults =
+                            await lastPageResponse.Content.ReadFromJsonAsync<HistoricRecordingSearchResults>();
+                        if (lastPageResults != null)
+                        {
+                            // Calculate total count: (full pages × page size) + last page items
+                            var lastPageCount = lastPageResults.SearchResults.Count;
+                            var fullPagesCount = (totalPages - 1) * (searchFiltersDto.PageSize ?? 0);
+                            var totalCount = fullPagesCount + lastPageCount;
+
+                            return new PagedResponseDto<HistoricRecordingRaw>
+                            {
+                                Items = recordings,
+                                PageOffSet = searchFiltersDto.PageOffset,
+                                PageSize = searchFiltersDto.PageSize,
+                                TotalPages = totalPages,
+                                TotalCount = totalCount,
+                                HasNext = searchFiltersDto.PageOffset < totalPages - 1,
+                                HasPrevious = searchFiltersDto.PageOffset > 0
+                            };
+                        }
+                    }
+                }
+
+                // Fallback if last page request fails
+                return new PagedResponseDto<HistoricRecordingRaw>
+                {
+                    Items = recordings,
+                    PageOffSet = searchFiltersDto.PageOffset,
+                    PageSize = searchFiltersDto.PageSize,
+                    TotalPages = totalPages,
+                    TotalCount = totalPages * (searchFiltersDto.PageSize ?? 0), // Estimate
+                    HasNext = searchFiltersDto.PageOffset < totalPages - 1,
+                    HasPrevious = searchFiltersDto.PageOffset > 0
+                };
             }
             catch (HttpRequestException ex)
             {
@@ -165,7 +188,7 @@ namespace backend.Services.ClarifyGoServices.HistoricRecordings
             }
             catch (ServiceException)
             {
-                throw; // Re-throw ServiceExceptions as they are already properly formatted
+                throw;
             }
             catch (Exception ex)
             {
@@ -187,14 +210,11 @@ namespace backend.Services.ClarifyGoServices.HistoricRecordings
                 {
                     return true;
                 }
-                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                {
-                    return false;
-                }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    throw new HttpRequestException($"Failed to delete recording. Status code: {response.StatusCode}. Error: {error}");
+                    throw new HttpRequestException(
+                        $"Failed to delete recording. Status code: {response.StatusCode}. Error: {error}");
                 }
             }
             catch (HttpRequestException ex)

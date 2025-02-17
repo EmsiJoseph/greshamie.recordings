@@ -2,8 +2,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Asp.Versioning;
 using backend.Services.Audits;
 using backend.Constants;
+using backend.Constants.Audit;
 using backend.Data.Models;
 using backend.Services.Auth;
 using Microsoft.AspNetCore.Authorization;
@@ -12,37 +14,38 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Azure.Core;
-using backend.Services;
+using backend.DTOs.Auth;
 
 namespace backend.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
-    public class AuthController : ControllerBase
+    [ApiVersion(ApiVersionConstants.VersionString)]
+    [Route("api/v{version:apiVersion}/[controller]")]
+    public class AuthController(
+        ITokenService tokenService,
+        ILogger<AuthController> logger,
+        UserManager<User> userManager,
+        IDataProtectionProvider dataProtectionProvider,
+        IConfiguration configuration,
+        IAuditService auditService)
+        : ControllerBase
     {
-        private readonly ITokenService _tokenService;
-        private readonly ILogger<AuthController> _logger;
-        private readonly UserManager<User> _userManager;
-        private readonly IDataProtector _protector;
-        private readonly IConfiguration _configuration;
-        private readonly IAuditService _auditService;
+        private readonly ITokenService _tokenService =
+            tokenService ?? throw new ArgumentNullException(nameof(tokenService));
 
-        public AuthController(
-            ITokenService tokenService,
-            ILogger<AuthController> logger,
-            UserManager<User> userManager,
-            IDataProtectionProvider dataProtectionProvider,
-            IConfiguration configuration,
-            IAuditService auditService)
-        {
-            _tokenService = tokenService ?? throw new ArgumentNullException(nameof(tokenService));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _userManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
-            _protector = dataProtectionProvider.CreateProtector("ClarifyGoAccessTokenProtector");
-            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-            _auditService = auditService;
-        }
+        private readonly ILogger<AuthController> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        private readonly UserManager<User> _userManager =
+            userManager ?? throw new ArgumentNullException(nameof(userManager));
+
+        private readonly IDataProtector _protector =
+            dataProtectionProvider.CreateProtector("ClarifyGoAccessTokenProtector");
+
+        private readonly IConfiguration _configuration =
+            configuration ?? throw new ArgumentNullException(nameof(configuration));
+
+        private readonly IAuditService _auditService =
+            auditService ?? throw new ArgumentNullException(nameof(auditService));
 
         private string GenerateRefreshToken()
         {
@@ -56,14 +59,22 @@ namespace backend.Controllers
             var claims = new List<Claim>
             {
                 new(JwtRegisteredClaimNames.Sub, user.Id),
-                new(JwtRegisteredClaimNames.UniqueName, user.UserName),
+                new(JwtRegisteredClaimNames.UniqueName, user.UserName ?? string.Empty),
                 new(JwtRegisteredClaimNames.NameId, user.Id),
                 new(ClaimTypes.Role, role),
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 
-            // Get settings from configuration.
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
+            // Ensure the key is at least 32 bytes (256 bits)
+            var configKey = _configuration["Jwt:Key"] ?? string.Empty;
+            var keyBytes = Encoding.UTF8.GetBytes(configKey);
+            if (keyBytes.Length < 32)
+            {
+                // Pad the key to 32 bytes if it's too short
+                Array.Resize(ref keyBytes, 32);
+            }
+            
+            var key = new SymmetricSecurityKey(keyBytes);
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             // Set token expiration.
@@ -78,7 +89,7 @@ namespace backend.Controllers
             );
 
             var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-
+            
             return new JwtTokenResult
             {
                 Token = tokenString,
@@ -88,6 +99,10 @@ namespace backend.Controllers
             };
         }
 
+        /// <summary>
+        /// Log into the system with your username and password.
+        /// Returns tokens needed for making other API calls.
+        /// </summary>
         [HttpPost("login")]
         [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -136,7 +151,7 @@ namespace backend.Controllers
                 }
 
                 // Save ClarifyGo access token and expiry to user record
-                user.ClarifyGoAccessToken = _protector.Protect(tokenResponse.AccessToken);
+                user.ClarifyGoAccessToken = _protector.Protect(tokenResponse.AccessToken ?? string.Empty);
                 user.ClarifyGoAccessTokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn);
 
                 // Generate a random refresh token
@@ -152,30 +167,45 @@ namespace backend.Controllers
 
 
                 // Generate JWT token
-                var jwtToken = GenerateJwtToken(user, role);
+                var jwtToken = GenerateJwtToken(user, role ?? string.Empty);
 
-                return Ok(new
+                var auditEntry = new AuditEntry
                 {
-                    user = new { userName = user.UserName },
-                    accessToken = new
+                    UserId = user.Id,
+                    EventId = AuditEventsConstants.UserLoggedInId,
+                    RecordId = null,
+                    Details = "User logged in."
+                };
+
+                // Log the login event using your audit service and the predefined constant.
+                await _auditService.LogAuditEntryAsync(auditEntry);
+
+                return Ok(new LoginResponseDto
+                {
+                    User = new UserDto { UserName = user.UserName },
+                    AccessToken = new TokenDto
                     {
-                        value = jwtToken.Token,
-                        expiresAt = DateTime.UtcNow.AddSeconds(jwtToken.ExpiresIn)
+                        Value = jwtToken.Token,
+                        ExpiresAt = DateTime.UtcNow.AddSeconds(jwtToken.ExpiresIn)
                     },
-                    refreshToken = new
+                    RefreshToken = new TokenDto
                     {
-                        value = user.RefreshToken,
-                        expiresAt = user.RefreshTokenExpiry
+                        Value = user.RefreshToken,
+                        ExpiresAt = user.RefreshTokenExpiry
                     }
                 });
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                _logger.LogError(ex, "Login failed for user: {Username}", request.Username);
+                Console.WriteLine($"Exception: {e.Message}");
                 return Unauthorized(new { message = "Invalid credentials" });
             }
         }
 
+        /// <summary>
+        /// Get a new access token using your refresh token.
+        /// Use this when your access token expires.
+        /// </summary>
         [AllowAnonymous]
         [HttpPost("refresh")]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
@@ -199,27 +229,41 @@ namespace backend.Controllers
 
             var role = _userManager.GetRolesAsync(user).Result.FirstOrDefault();
 
-            var jwtToken = GenerateJwtToken(user, role);
+            var jwtToken = GenerateJwtToken(user, role ?? string.Empty);
             user.RefreshToken = GenerateRefreshToken();
             user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
             await _userManager.UpdateAsync(user);
 
-            return Ok(new
+            var auditEntry = new AuditEntry
             {
-                user = new { userName = user.UserName },
-                accessToken = new
+                UserId = user.Id,
+                EventId = AuditEventsConstants.TokenRefreshedId,
+                RecordId = null,
+                Details = "Token refreshed."
+            };
+            // Log the refresh event using your audit service and the predefined constant.
+            await _auditService.LogAuditEntryAsync(auditEntry);
+
+            return Ok(new LoginResponseDto
+            {
+                User = new UserDto { UserName = user.UserName },
+                AccessToken = new TokenDto
                 {
-                    value = jwtToken.Token,
-                    expiresAt = DateTime.UtcNow.AddSeconds(jwtToken.ExpiresIn)
+                    Value = jwtToken.Token,
+                    ExpiresAt = DateTime.UtcNow.AddSeconds(jwtToken.ExpiresIn)
                 },
-                refreshToken = new
+                RefreshToken = new TokenDto
                 {
-                    value = user.RefreshToken,
-                    expiresAt = user.RefreshTokenExpiry
+                    Value = user.RefreshToken,
+                    ExpiresAt = user.RefreshTokenExpiry
                 }
             });
         }
 
+        /// <summary>
+        /// Log out of the system.
+        /// This will invalidate your current tokens.
+        /// </summary>
         [HttpPost("logout")]
         [AllowAnonymous]
         public async Task<IActionResult> Logout()
@@ -247,9 +291,8 @@ namespace backend.Controllers
             {
                 jwtToken = tokenHandler.ReadJwtToken(token);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger.LogError("Token parsing failed: " + ex.Message);
                 return BadRequest(new { message = "Invalid token." });
             }
 
@@ -266,9 +309,6 @@ namespace backend.Controllers
             string userId = userIdClaim.Value;
             _logger.LogInformation($"User ID extracted: {userId}");
 
-            // Log the logout event using your audit service and the predefined constant.
-            await _auditService.LogAuditEntryAsync(userId, AuditEventTypes.UserLoggedOut, "User logged out.");
-
             // Optionally, invalidate the refresh token and ClarifyGo access token if they exist in the database.
             var user = await _userManager.FindByIdAsync(userId);
             if (user != null)
@@ -282,6 +322,16 @@ namespace backend.Controllers
             }
 
             _logger.LogInformation("Logout successful.");
+
+            var auditEntry = new AuditEntry
+            {
+                UserId = userId,
+                EventId = AuditEventsConstants.UserLoggedOutId,
+                RecordId = null,
+                Details = "User logged out."
+            };
+            // Log the logout event using your audit service and the predefined constant.
+            await _auditService.LogAuditEntryAsync(auditEntry);
             return Ok(new { message = "Logged out successfully." });
         }
     }
@@ -293,8 +343,8 @@ namespace backend.Controllers
 
     public class LoginRequest
     {
-        [Required] public string? Username { get; set; }
-        [Required] public string? Password { get; set; }
+        [Required] public string? Username { get; set; } = string.Empty;
+        [Required] public string? Password { get; set; } = string.Empty;
     }
 
     public class JwtTokenResult

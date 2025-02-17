@@ -3,51 +3,57 @@ using backend.Data.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-namespace backend.Data
+namespace backend.Data.Seeds
 {
     public static class UserRoleSeeder
     {
-        public static void Seed(this ModelBuilder modelBuilder, string adminUserName, string adminPassword)
+        public static void SeedUserRole(this ModelBuilder builder, string? adminUsername, string? adminPassword)
         {
-            if (string.IsNullOrEmpty(adminPassword))
+            if (string.IsNullOrEmpty(adminUsername) || string.IsNullOrEmpty(adminPassword))
             {
-                throw new ArgumentException("Admin password cannot be null or empty", nameof(adminPassword));
+                throw new ArgumentException("Admin credentials are not configured properly");
             }
 
-            var adminRoleId = Guid.NewGuid().ToString();
-            var adminUserId = Guid.NewGuid().ToString();
-
-            modelBuilder.Entity<Role>().HasData(
+            builder.Entity<Role>().HasData(
                 new Role
                 {
-                    Id = adminRoleId, Name = RolesConstants.Admin,
-                    NormalizedName = RolesConstants.Admin.ToUpperInvariant(),
-                    Description = "Administrator", Level = 100
+                    Id = "1",
+                    Name = RolesConstants.Admin,
+                    NormalizedName = RolesConstants.Admin.ToUpper(),
+                    ConcurrencyStamp = Guid.NewGuid().ToString(),
+                    Description = "Administrator role"
                 },
                 new Role
                 {
-                    Name = RolesConstants.User, NormalizedName = RolesConstants.User.ToUpperInvariant(),
-                    Description = "User", Level = 90
-                });
+                    Id = "2",
+                    Name = RolesConstants.User,
+                    NormalizedName = RolesConstants.User.ToUpper(),
+                    ConcurrencyStamp = Guid.NewGuid().ToString(),
+                    Description = "User role"
+                }
+            );
 
             var hasher = new PasswordHasher<User>();
-
             var adminUser = new User
             {
-                Id = adminUserId,
-                UserName = adminUserName,
-                NormalizedUserName = adminUserName.ToUpperInvariant(),
+                Id = "1",
+                UserName = adminUsername,
+                NormalizedUserName = adminUsername.ToUpper(),
+                EmailConfirmed = true,
                 SecurityStamp = Guid.NewGuid().ToString(),
-                ConcurrencyStamp = Guid.NewGuid().ToString(),
-                PasswordHash = hasher.HashPassword(null, adminPassword)
+                ConcurrencyStamp = Guid.NewGuid().ToString()
             };
+            adminUser.PasswordHash = hasher.HashPassword(adminUser, adminPassword);
 
-            modelBuilder.Entity<User>().HasData(adminUser);
-            modelBuilder.Entity<IdentityUserRole<string>>().HasData(new IdentityUserRole<string>
-            {
-                UserId = adminUserId,
-                RoleId = adminRoleId
-            });
+            builder.Entity<User>().HasData(adminUser);
+
+            builder.Entity<IdentityUserRole<string>>().HasData(
+                new IdentityUserRole<string>
+                {
+                    RoleId = "1",
+                    UserId = "1"
+                }
+            );
         }
     }
 }
