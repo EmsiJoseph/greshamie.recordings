@@ -62,30 +62,32 @@ steps:
     # 7. Perform the subtree split
     git subtree split --prefix=$TARGET -b $TARGET-split
 
-    # 8. Check if $DEV_BRANCH branch exists and handle accordingly
-    if git show-ref --verify --quiet refs/heads/$DEV_BRANCH; then
-        # Main exists - checkout and reset to $TARGET-split
-        git checkout $DEV_BRANCH
-        git reset --hard $TARGET-split
-    else
-        # Dev doesn't exist - create it from $TARGET-split
-        git checkout -b $DEV_BRANCH $TARGET-split
-    fi
-
-    # 10. Push to GitHub with force to ensure updates
-    git push origin $DEV_BRANCH --force
-
-    # Checkout to prod
+    # 8. First, pull the latest prod branch
     git fetch origin $PROD_BRANCH
     git checkout $PROD_BRANCH
 
-    # Auto-merge
-    git merge --no-ff $DEV_BRANCH -m "Auto-merge"
+    # 9. Create/update dev branch from prod
+    if git show-ref --verify --quiet refs/heads/$DEV_BRANCH; then
+        git checkout $DEV_BRANCH
+        git reset --hard origin/$PROD_BRANCH
+    else
+        git checkout -b $DEV_BRANCH origin/$PROD_BRANCH
+    fi
+
+    # 10. Apply the changes from target-split to dev
+    git merge $TARGET-split --no-ff -m "Merging changes from $TARGET-main"
+
+    # 11. Push dev branch
+    git push origin $DEV_BRANCH --force
+
+    # 12. Switch to prod and merge dev
+    git checkout $PROD_BRANCH
+    git merge --no-ff $DEV_BRANCH -m "Auto-merge from $DEV_BRANCH"
     
-    # Push changes
+    # 13. Push prod changes
     git push origin $PROD_BRANCH
 
-    # 11. Cleanup
+    # 14. Cleanup
     git branch -D $TARGET-split
     git branch -D temp-working-branch
   env:

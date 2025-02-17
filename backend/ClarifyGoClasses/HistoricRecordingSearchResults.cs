@@ -1,15 +1,15 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace backend.Classes
+namespace backend.ClarifyGoClasses
 {
     // Represents the overall search results response.
     public class HistoricRecordingSearchResults
     {
         [JsonPropertyName("searchResults")]
-        public List<HistoricRecordingSearchResult> SearchResults { get; set; } = new List<HistoricRecordingSearchResult>();
-        
-        [JsonPropertyName("totalResults")]
-        public int TotalResults { get; set; }
+        public List<HistoricRecordingSearchResult> SearchResults { get; set; } =
+            new List<HistoricRecordingSearchResult>();
+
+        [JsonPropertyName("totalResults")] public int TotalResults { get; set; }
     }
 
     // Represents an individual search result item.
@@ -17,7 +17,7 @@ namespace backend.Classes
     {
         // The recording details.
         [JsonPropertyName("recording")]
-        public ClarifyGoHistoricRecordingRaw HistoricRecording { get; set; } = new ClarifyGoHistoricRecordingRaw();
+        public HistoricRecordingRaw HistoricRecording { get; set; } = new HistoricRecordingRaw();
 
         // Count of screen recordings.
         [JsonPropertyName("screenRecordingCount")]
