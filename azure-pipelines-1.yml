@@ -1,0 +1,38 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  GITHUB_USERNAME: 'EmsiJoseph'
+  GITHUB_REPO: 'greshamie.recordings'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- checkout: none
+
+- script: |
+    set -euxo pipefail
+
+    # 1. Clone the GitHub repository
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    cd $GITHUB_REPO
+
+    # 2. Configure Git identity
+    git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config user.name "Azure DevOps"
+
+    # 3. Add Azure DevOps remote
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
+
+    # 4. Fetch and checkout the Azure main branch
+    git fetch azure main
+    git checkout azure/main
+
+    # 5. Push to GitHub main branch
+    git push origin HEAD:main
+
+  env:
+    GITHUB_PAT: $(GITHUB_PAT)
