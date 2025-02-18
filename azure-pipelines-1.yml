@@ -1,0 +1,58 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  GITHUB_USERNAME: 'EmsiJoseph'
+  GITHUB_REPO: 'greshamie.recordings'
+  TARGET: 'main'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- checkout: none
+
+- script: |
+    set -euxo pipefail
+
+    # Determine which branch triggered the pipeline
+    TRIGGER_BRANCH=$(echo "$(Build.SourceBranch)" | sed 's/refs\/heads\///')
+    echo "Pipeline triggered by: $TRIGGER_BRANCH"
+
+    # Only proceed if the branch is 'main'
+    if [[ "$TRIGGER_BRANCH" != "$TARGET" ]]; then
+      echo "Skipping pipeline as trigger branch doesn't match target"
+      exit 0
+    fi
+
+    # 1. Clone the GitHub repository
+    git clone https://$GITHUB_USERNAME:$GITHUB_PAT@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git
+    cd $GITHUB_REPO
+
+    # 2. Configure Git identity
+    git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
+    git config user.name "Azure DevOps"
+
+    # 3. Add Azure DevOps remote
+    git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
+
+    # 4. Fetch and checkout the Azure main branch
+    git fetch azure main
+    git checkout azure/main
+
+    # 5. Create and checkout a temporary branch
+    git checkout -b temp-working-branch
+
+    # 6. Merge the entire contents from the Azure main branch into GitHub main
+    git checkout main
+    git merge temp-working-branch --no-ff -m "Auto-merge changes from Azure main to GitHub main"
+
+    # 7. Push the changes to the GitHub main branch
+    git push origin main
+
+    # 8. Cleanup
+    git branch -D temp-working-branch
+  env:
+    GITHUB_PAT: $(GITHUB_PAT)
