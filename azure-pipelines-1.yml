@@ -1,26 +1,12 @@
 trigger:
   branches:
     include:
-      - backend-main
-      - frontend-main
+      - main
 
 variables:
-  # Common variables
   GITHUB_USERNAME: 'EmsiJoseph'
-  
-  # Backend-specific variables
-  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/backend-main') }}:
-    GITHUB_REPO: 'greshamie.recordings.backend'
-    DEV_BRANCH: 'dev'
-    PROD_BRANCH: 'prod'
-    TARGET: 'backend'
-  
-  # Frontend-specific variables
-  ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/frontend-main') }}:
-    GITHUB_REPO: 'greshamie.recordings.frontend'
-    DEV_BRANCH: 'dev'
-    PROD_BRANCH: 'prod'
-    TARGET: 'frontend'
+  GITHUB_REPO: 'greshamie.recordings'
+  TARGET: 'main'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -35,8 +21,8 @@ steps:
     TRIGGER_BRANCH=$(echo "$(Build.SourceBranch)" | sed 's/refs\/heads\///')
     echo "Pipeline triggered by: $TRIGGER_BRANCH"
 
-    # Only proceed if the variables match the triggered branch
-    if [[ "$TRIGGER_BRANCH" != *"$TARGET"* ]]; then
+    # Only proceed if the branch is 'main'
+    if [[ "$TRIGGER_BRANCH" != "$TARGET" ]]; then
       echo "Skipping pipeline as trigger branch doesn't match target"
       exit 0
     fi
@@ -49,46 +35,24 @@ steps:
     git config user.email "Mcjoseph.Agbanlog@wizard-ai.com"
     git config user.name "Azure DevOps"
 
-    # 4. Add Azure DevOps remote
+    # 3. Add Azure DevOps remote
     git remote add azure https://$(System.AccessToken)@wizardcloud.visualstudio.com/Gresham%20Recordings/_git/Gresham%20Recordings
 
-    # 5. Fetch and checkout the Azure $TARGET-main branch
-    git fetch azure $TARGET-main
-    git checkout azure/$TARGET-main
+    # 4. Fetch and checkout the Azure main branch
+    git fetch azure main
+    git checkout azure/main
 
-    # 6. Create and checkout a temporary branch
+    # 5. Create and checkout a temporary branch
     git checkout -b temp-working-branch
 
-    # 7. Perform the subtree split
-    git subtree split --prefix=$TARGET -b $TARGET-split
+    # 6. Merge the entire contents from the Azure main branch into GitHub main
+    git checkout main
+    git merge temp-working-branch --no-ff -m "Auto-merge changes from Azure main to GitHub main"
 
-    # 8. First, pull the latest prod branch
-    git fetch origin $PROD_BRANCH
-    git checkout $PROD_BRANCH
+    # 7. Push the changes to the GitHub main branch
+    git push origin main
 
-    # 9. Create/update dev branch from prod
-    if git show-ref --verify --quiet refs/heads/$DEV_BRANCH; then
-        git checkout $DEV_BRANCH
-        git reset --hard origin/$PROD_BRANCH
-    else
-        git checkout -b $DEV_BRANCH origin/$PROD_BRANCH
-    fi
-
-    # 10. Apply the changes from target-split to dev
-    git merge $TARGET-split --no-ff -m "Merging changes from $TARGET-main"
-
-    # 11. Push dev branch
-    git push origin $DEV_BRANCH --force
-
-    # 12. Switch to prod and merge dev
-    git checkout $PROD_BRANCH
-    git merge --no-ff $DEV_BRANCH -m "Auto-merge from $DEV_BRANCH"
-    
-    # 13. Push prod changes
-    git push origin $PROD_BRANCH
-
-    # 14. Cleanup
-    git branch -D $TARGET-split
+    # 8. Cleanup
     git branch -D temp-working-branch
   env:
     GITHUB_PAT: $(GITHUB_PAT)
