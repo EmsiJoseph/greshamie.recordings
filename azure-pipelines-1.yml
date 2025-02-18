@@ -45,18 +45,14 @@ steps:
     # 5. Create and checkout a temporary branch
     git checkout -b temp-working-branch
 
-    # 6. Perform the subtree split (adjust if needed)
-    git subtree split --prefix=target-folder -b target-split
-
-    # 7. Merge the changes to the main branch
+    # 6. Merge the entire contents from the Azure main branch into GitHub main
     git checkout main
-    git merge $TARGET-split --no-ff -m "Auto-merge changes from $TARGET-main"
+    git merge temp-working-branch --no-ff -m "Auto-merge changes from Azure main to GitHub main"
 
-    # 8. Push the changes to the main branch
+    # 7. Push the changes to the GitHub main branch
     git push origin main
 
-    # 9. Cleanup
-    git branch -D $TARGET-split
+    # 8. Cleanup
     git branch -D temp-working-branch
   env:
     GITHUB_PAT: $(GITHUB_PAT)
