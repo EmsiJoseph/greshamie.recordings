@@ -1,9 +1,6 @@
 trigger:
   - main
 
-variables:
-  VERSION: '1.1.0'
-
 stages:
 - stage: BuildAndPush
   jobs:
@@ -20,6 +17,9 @@ stages:
         tags: |
           latest
           $(VERSION)
+        arguments: |
+          --build-arg NEXT_PUBLIC_GRESHAM_BACKEND=$(NEXT_PUBLIC_GRESHAM_BACKEND)
+          --build-arg NEXT_PUBLIC_GRESHAM_AUTH=$(NEXT_PUBLIC_GRESHAM_AUTH)
 
     - task: Docker@2
       displayName: 'Build and Push Backend Image'
@@ -30,3 +30,18 @@ stages:
         tags: |
           latest
           $(VERSION)
+        arguments: |
+          --build-arg DB_CONNECTION_STRING=$(DB_CONNECTION_STRING)
+          --build-arg AZURE_BLOB_CONNECTION=$(AZURE_BLOB_CONNECTION)
+          --build-arg ALLOWED_ORIGINS=$(ALLOWED_ORIGINS)
+          --build-arg ADMIN_PASSWORD=$(ADMIN_PASSWORD)
+          --build-arg ADMIN_USERNAME=$(ADMIN_USERNAME)
+          --build-arg AUTH_CLIENT_ID=$(AUTH_CLIENT_ID)
+          --build-arg AUTH_CLIENT_SECRET=$(AUTH_CLIENT_SECRET)
+          --build-arg AUTH_SCOPE=$(AUTH_SCOPE)
+          --build-arg CLARIFYGO_API_BASE_URI=$(CLARIFYGO_API_BASE_URI)
+          --build-arg CLARIFYGO_IDENTITY_URI=$(CLARIFYGO_IDENTITY_URI)
+          --build-arg JWT_AUDIENCE=$(JWT_AUDIENCE)
+          --build-arg JWT_EXPIRY_HOURS=$(JWT_EXPIRY_HOURS)
+          --build-arg JWT_ISSUER=$(JWT_ISSUER)
+          --build-arg JWT_KEY=$(JWT_KEY)
