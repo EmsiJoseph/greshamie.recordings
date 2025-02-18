@@ -44,7 +44,24 @@ jobs:
     # 4. Build Docker Compose images
     - name: Build Docker Compose Images
       run: |
-        docker compose build
+        docker compose -f docker-compose.dev.yml build
+      env:
+        NEXT_PUBLIC_GRESHAM_BACKEND: ${{ secrets.NEXT_PUBLIC_GRESHAM_BACKEND }}
+        NEXT_PUBLIC_GRESHAM_AUTH: ${{ secrets.NEXT_PUBLIC_GRESHAM_AUTH }}
+        DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+        AZURE_BLOB_CONNECTION: ${{ secrets.AZURE_BLOB_CONNECTION }}
+        ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
+        ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
+        AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
+        AUTH_CLIENT_SECRET: ${{ secrets.AUTH_CLIENT_SECRET }}
+        AUTH_SCOPE: ${{ secrets.AUTH_SCOPE }}
+        CLARIFYGO_API_BASE_URI: ${{ secrets.CLARIFYGO_API_BASE_URI }}
+        CLARIFYGO_IDENTITY_URI: ${{ secrets.CLARIFYGO_IDENTITY_URI }}
+        JWT_AUDIENCE: ${{ secrets.JWT_AUDIENCE }}
+        JWT_EXPIRY_HOURS: ${{ secrets.JWT_EXPIRY_HOURS }}
+        JWT_ISSUER: ${{ secrets.JWT_ISSUER }}
+        JWT_KEY: ${{ secrets.JWT_KEY }}
 
     # 5. Tag images with version and latest
     - name: Tag Docker Images
