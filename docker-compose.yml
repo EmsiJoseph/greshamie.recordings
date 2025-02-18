@@ -1,21 +1,39 @@
+version: "3.8"
+
 services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - certs:/etc/letsencrypt
+      - certs-data:/data/letsencrypt
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - gresham-network
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - certs:/etc/letsencrypt
+      - certs-data:/data/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew; done'"
+
   frontend:
     image: mcagbanlog/gresham-recordings-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_GRESHAM_BACKEND=${NEXT_PUBLIC_GRESHAM_BACKEND}
-        - NEXT_PUBLIC_GRESHAM_AUTH=${NEXT_PUBLIC_GRESHAM_AUTH}
-    ports:
-      - "3000:3000"
     environment:
       - NEXT_PUBLIC_GRESHAM_BACKEND=${NEXT_PUBLIC_GRESHAM_BACKEND}
       - NEXT_PUBLIC_GRESHAM_AUTH=${NEXT_PUBLIC_GRESHAM_AUTH}
-    user: "1001:1001"
-    volumes:
-      - ${WEBAPP_STORAGE_HOME}/next-cache:/app/.next/cache
-      - ${WEBAPP_STORAGE_HOME}/frontend-storage:/app/public/uploads
     networks:
       - gresham-network
 
@@ -24,12 +42,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "5000:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
-      - ConnectionStrings__LocalDefaultConnection=${DB_CONNECTION_STRING}
       - ConnectionStrings__AzureBlobStorage=${AZURE_BLOB_CONNECTION}
       - AllowedOrigins=${ALLOWED_ORIGINS}
       - AdminCredentials__Password=${ADMIN_PASSWORD}
@@ -45,37 +60,13 @@ services:
       - Jwt__Key=${JWT_KEY}
       - ASPNETCORE_URLS=http://+:80
       - ReverseProxy__Clusters__nextjsCluster__Destinations__nextjs__Address=http://frontend:3000
-    volumes:
-      - ${WEBAPP_STORAGE_HOME}/backend-storage:/app/data
-      - ${WEBAPP_STORAGE_HOME}/backend-logs:/app/logs
     networks:
       - gresham-network
 
 volumes:
-  next-cache:
-    driver: local
-    driver_opts:
-      type: none
-      device: ${WEBAPP_STORAGE_HOME}/next-cache
-      o: bind
-  frontend-storage:
-    driver: local
-    driver_opts:
-      type: none
-      device: ${WEBAPP_STORAGE_HOME}/frontend-storage
-      o: bind
-  backend-storage:
-    driver: local
-    driver_opts:
-      type: none
-      device: ${WEBAPP_STORAGE_HOME}/backend-storage
-      o: bind
-  backend-logs:
-    driver: local
-    driver_opts:
-      type: none
-      device: ${WEBAPP_STORAGE_HOME}/backend-logs
-      o: bind
+  certs:
+  certs-data:
+
 
 networks:
   gresham-network:
