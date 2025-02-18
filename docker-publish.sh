@@ -1,10 +1,6 @@
 #!/bin/bash
 
-# Set version
 VERSION=1.1.0
-
-# Login to Docker Hub (you'll need to do this first)
-# docker login
 
 # Build images with version tag and latest
 docker compose build
