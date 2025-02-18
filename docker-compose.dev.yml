@@ -1,0 +1,56 @@
+services:
+  frontend:
+    image: mcagbanlog/gresham-recordings-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_GRESHAM_BACKEND=${NEXT_PUBLIC_GRESHAM_BACKEND}
+        - NEXT_PUBLIC_GRESHAM_AUTH=${NEXT_PUBLIC_GRESHAM_AUTH}
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_GRESHAM_BACKEND=${NEXT_PUBLIC_GRESHAM_BACKEND}
+      - NEXT_PUBLIC_GRESHAM_AUTH=${NEXT_PUBLIC_GRESHAM_AUTH}
+    user: "1001:1001"
+    volumes:
+      - next-cache:/app/.next/cache
+    networks:
+      - gresham-network
+
+  backend:
+    image: mcagbanlog/gresham-recordings-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
+      - ConnectionStrings__LocalDefaultConnection=${DB_CONNECTION_STRING}
+      - ConnectionStrings__AzureBlobStorage=${AZURE_BLOB_CONNECTION}
+      - AllowedOrigins=${ALLOWED_ORIGINS}
+      - AdminCredentials__Password=${ADMIN_PASSWORD}
+      - AdminCredentials__UserName=${ADMIN_USERNAME}
+      - AuthSettings__ClientId=${AUTH_CLIENT_ID}
+      - AuthSettings__ClientSecret=${AUTH_CLIENT_SECRET}
+      - AuthSettings__Scope=${AUTH_SCOPE}
+      - ClarifyGoAPI__ApiBaseUri=${CLARIFYGO_API_BASE_URI}
+      - ClarifyGoAPI__IdentityServerUri=${CLARIFYGO_IDENTITY_URI}
+      - Jwt__Audience=${JWT_AUDIENCE}
+      - Jwt__ExpiryHours=${JWT_EXPIRY_HOURS}
+      - Jwt__Issuer=${JWT_ISSUER}
+      - Jwt__Key=${JWT_KEY}
+      - ASPNETCORE_URLS=http://+:80
+      - ReverseProxy__Clusters__nextjsCluster__Destinations__nextjs__Address=http://frontend:3000
+    networks:
+      - gresham-network
+
+volumes:
+  next-cache:
+    # Define named volume
+
+networks:
+  gresham-network:
+    driver: bridge
