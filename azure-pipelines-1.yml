@@ -1,0 +1,32 @@
+trigger:
+  - main
+
+variables:
+  VERSION: '1.1.0'
+
+stages:
+- stage: BuildAndPush
+  jobs:
+  - job: BuildImages
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: Docker@2
+      displayName: 'Build and Push Frontend Image'
+      inputs:
+        command: buildAndPush
+        dockerfile: 'frontend/Dockerfile'
+        repository: mcagbanlog/gresham-recordings-frontend
+        tags: |
+          latest
+          $(VERSION)
+
+    - task: Docker@2
+      displayName: 'Build and Push Backend Image'
+      inputs:
+        command: buildAndPush
+        dockerfile: 'backend/Dockerfile'
+        repository: mcagbanlog/gresham-recordings-backend
+        tags: |
+          latest
+          $(VERSION)
