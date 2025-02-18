@@ -14,7 +14,8 @@ services:
       - NEXT_PUBLIC_GRESHAM_AUTH=${NEXT_PUBLIC_GRESHAM_AUTH}
     user: "1001:1001"
     volumes:
-      - next-cache:/app/.next/cache
+      - ${WEBAPP_STORAGE_HOME}/next-cache:/app/.next/cache
+      - ${WEBAPP_STORAGE_HOME}/frontend-storage:/app/public/uploads
     networks:
       - gresham-network
 
@@ -44,12 +45,37 @@ services:
       - Jwt__Key=${JWT_KEY}
       - ASPNETCORE_URLS=http://+:80
       - ReverseProxy__Clusters__nextjsCluster__Destinations__nextjs__Address=http://frontend:3000
+    volumes:
+      - ${WEBAPP_STORAGE_HOME}/backend-storage:/app/data
+      - ${WEBAPP_STORAGE_HOME}/backend-logs:/app/logs
     networks:
       - gresham-network
 
 volumes:
   next-cache:
-    # Define named volume
+    driver: local
+    driver_opts:
+      type: none
+      device: ${WEBAPP_STORAGE_HOME}/next-cache
+      o: bind
+  frontend-storage:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${WEBAPP_STORAGE_HOME}/frontend-storage
+      o: bind
+  backend-storage:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${WEBAPP_STORAGE_HOME}/backend-storage
+      o: bind
+  backend-logs:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${WEBAPP_STORAGE_HOME}/backend-logs
+      o: bind
 
 networks:
   gresham-network:
